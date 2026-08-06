@@ -16,6 +16,24 @@ Dev (exact pins): `typescript` 7.0.2, `tsx` 4.23.9, `vitest` 4.1.10 (per spec §
 
 - `@types/node` 26.1.2 — dev-only type definitions; required for `tsc --noEmit` over Node builtins (fs/path/url) used by the ledger writer. No runtime footprint.
 
+## 2026-08-06 — Phase 2 (router): model catalog snapshot
+
+`src/models.json` verified 2026-08-06 against live provider docs (per spec §3 — no training-data pricing):
+
+- Anthropic — platform.claude.com models overview: `claude-haiku-4-5` $1/$5, `claude-sonnet-5` $3/$15, `claude-opus-5` $5/$25 per MTok. Sonnet 5 has introductory pricing ($2/$10) through 2026-08-31; the catalog records the sticker price so estimates don't silently shift when the intro lapses (estimates run slightly conservative until then).
+- OpenAI — developers.openai.com/api/docs/pricing: `gpt-5.6-luna` $0.20/$1.20, `gpt-5.6-terra` $2/$12, `gpt-5.6-sol` $5/$30.
+- Google — ai.google.dev/gemini-api/docs/pricing: `gemini-3.5-flash-lite` $0.30/$2.50, `gemini-3.6-flash` $1.50/$7.50, `gemini-3.1-pro-preview` $2/$12 (≤200k-token rate; council prompts are far below the 200k threshold where Google's long-context pricing kicks in). The 3.1 Pro Preview is Google's current frontier Pro; revisit when a GA Pro ships.
+
+## 2026-08-06 — Phase 2 (router): design decisions
+
+- **`dry_run` tool param** — deviation from spec §2's fixed schema, approved by Dan. The P2 gate's "dry-run flag" lives on the tool (`dry_run?: boolean`) so MCP callers can preview an estimate per-call; env-var and CLI-only alternatives were rejected as unreachable from the tool surface.
+- **Synth top-tier clamp** — spec §2 puts the synthesizer one tier above the advisors; at `high` there is no tier above, so the synthesizer is the cheapest `high`-tier model (cheapest by estimated synthesis-call cost, not raw per-token price).
+- **Synth requires an available key** — synthesizer candidates are restricted to providers whose API key is set; a synth model we cannot call is not a candidate.
+- **Default budget caps** — low $0.05, medium $0.25, high/audited $1.00; explicit `budget_usd` always wins as the hard cap.
+- **Token-estimate constants** — chars/4 heuristic; `MAX_ADVISOR_TOKENS` 1024 (≤300-word JSON contract), `MAX_SYNTH_TOKENS` 2048 (DISSENT quotes verbatim), prompt overheads 400/300 tokens. Deliberately crude: the pre-flight estimate guides tier choice; the hard cap is enforced against actual usage (P4).
+- **Refusals write no ledger** — a refused convening deliberated nothing; the refusal (with its estimate) is returned as tool text only.
+- **Estimates can rise when an advisor is missing** — dropping a provider also drops its synth candidates; losing the cheapest synthesizer can outweigh the saved advisor call. Discovered via test; documented here so nobody "fixes" it.
+
 ## 2026-08-06 — Ledger default dir resolves from package root, not cwd
 
 MCP clients launch stdio servers from arbitrary working directories. Defaulting the

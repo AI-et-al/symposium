@@ -1,0 +1,28 @@
+{
+  "name": "symposium",
+  "version": "0.1.0",
+  "description": "Multi-model deliberation as an MCP server. Convene Claude, GPT, and Gemini on one question; surface disagreement verbatim; write every deliberation to a plain-Markdown ledger.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.115.0",
+    "@google/genai": "2.16.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "openai": "7.4.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.9",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

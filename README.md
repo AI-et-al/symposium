@@ -1,5 +1,7 @@
 # Symposium
 
+![Symposium — Feuerbach's Plato's Symposium, rendered in ASCII](assets/AI-et-al_Symposium.gif)
+
 **Multi-model deliberation as an MCP server.** Convene Claude, GPT, and Gemini
 on one question. Surface their disagreement verbatim. Keep the record in plain
 Markdown you own.

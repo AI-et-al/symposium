@@ -41,6 +41,30 @@ Dev (exact pins): `typescript` 7.0.2, `tsx` 4.23.9, `vitest` 4.1.10 (per spec §
 - **Synthesizer output format** — exactly two markdown sections (`## DISSENT`, then `## SYNTHESIS` or `## OPEN QUESTIONS`). A format violation is preserved loudly (`SYNTHESIZER FORMAT FAILURE` marker + full output kept) rather than silently discarded — per the manifesto, buried dissent is the highest-severity bug.
 - **Failure accounting** — `malformed`/`error` advisors are recorded in ledger positions with their detail; the synthesizer is told which advisors have no position and not to invent views for them; zero valid positions skips the synth call entirely (no fee for synthesizing nothing).
 
+## 2026-08-06 — Synthesis budget raised after first live convening truncated mid-DISSENT
+
+The P3 gate convening's synthesizer (gemini-3.1-pro-preview, a thinking model) spent most
+of the 2048-token synthesis budget on internal reasoning and truncated ~90 visible tokens
+into the DISSENT section (caught loudly by the format-failure guard). `MAX_SYNTH_TOKENS`
+2048 → 8192 to give frontier synth models thinking headroom; the low-stakes default
+budget rises $0.05 → $0.10 so the floor tier still clears its own estimate.
+
+## 2026-08-06 — Grok seated as the fourth council voice (spec §2 amended)
+
+Dan's direction: extensibility was the point ("making sure I could add more models" — the
+Janus impulse). The council is now four voices — Claude, GPT, Gemini, Grok — and the spec's
+"three-model" phrasing is amended to N-voice with the ≥2 rule unchanged.
+
+- xAI catalog verified 2026-08-06 against docs.x.ai: `grok-build-0.1` $1/$2 (low),
+  `grok-4.20-0309-non-reasoning` $1.25/$2.50 (medium), `grok-4.5` $2/$6 (high). Base-tier
+  rates recorded; xAI charges more above 200k prompt tokens, far beyond council prompts.
+  The non-reasoning mid model is deliberate: the JSON contract needs no thinking tax.
+- Adapter reuses the OpenAI SDK against `https://api.x.ai/v1` (chat completions,
+  `max_completion_tokens`) — no new dependency, per docs.x.ai's own recommendation.
+- Env key: `XAI_API_KEY`. Missing key = Grok skipped with a notice, same as any seat.
+- Side effect worth knowing: Grok's cheap output pricing makes xai models the default
+  synthesizer pick at every tier (cheapest synth-call cost among available providers).
+
 ## 2026-08-06 — Deferred: Oracle (steipete/oracle) as a fourth council member
 
 Dan asked whether adding Oracle as a council voice is expensive. Mechanically no — the

@@ -65,6 +65,25 @@ Janus impulse). The council is now four voices — Claude, GPT, Gemini, Grok —
 - Side effect worth knowing: Grok's cheap output pricing makes xai models the default
   synthesizer pick at every tier (cheapest synth-call cost among available providers).
 
+## 2026-08-06 — Phase 4 (hardening): design decisions
+
+- **Timeouts** — 60s per advisor call (spec §5), applied separately to the first call and
+  the retry; synthesis gets 120s (it reads N positions and thinks before writing). A
+  timeout surfaces as an `error` outcome / loud synthesis-failure marker, never a hang.
+- **Mid-flight cost abort under parallel fan-out** — all advisors launch simultaneously,
+  so "abort remaining calls" (spec §3) concretely means: once actual spend reaches the
+  cap, retries are skipped and synthesis is aborted; advisor positions already returned
+  are kept and recorded. Full AbortController plumbing into in-flight HTTP calls is
+  deliberately out of scope — per-call spend is bounded by max-token ceilings.
+- **Synthesizer failure isolation** — a synth timeout/error no longer sinks the
+  convening: positions are preserved, dissent/synthesis carry a loud failure marker.
+- **Secret redaction** — provider error messages can echo credentials (OpenAI 401s quote
+  a masked key). `redactSecrets` scrubs key-shaped strings from all failure details
+  before they reach the response or ledger. Word boundaries + length floors added after
+  the first sweep false-positived on "risk-tolerant" in real advisor prose. One
+  historical ledger entry containing OpenAI's own masked fragment of an already-rotated
+  key was scrubbed in place.
+
 ## 2026-08-06 — Deferred: Oracle (steipete/oracle) as a fourth council member
 
 Dan asked whether adding Oracle as a council voice is expensive. Mechanically no — the

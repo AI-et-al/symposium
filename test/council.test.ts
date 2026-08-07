@@ -3,9 +3,11 @@ import {
   advisorPrompt,
   conveneCouncil,
   parseReply,
+  redactSecrets,
   runAdvisor,
   splitSynthOutput,
   stripFences,
+  type CostCap,
 } from "../src/council.js";
 import type { ProviderAdapter } from "../src/providers/types.js";
 import { planCouncil, type Catalog, type Provider } from "../src/router.js";
@@ -47,7 +49,11 @@ interface FakeAdapter extends ProviderAdapter {
   calls: string[];
 }
 
-function fakeAdapter(provider: Provider, responses: Array<string | Error>): FakeAdapter {
+function fakeAdapter(
+  provider: Provider,
+  responses: Array<string | Error>,
+  usage = { inputTokens: 1000, outputTokens: 500 },
+): FakeAdapter {
   const calls: string[] = [];
   return {
     provider,
@@ -57,7 +63,7 @@ function fakeAdapter(provider: Provider, responses: Array<string | Error>): Fake
       const next = responses.shift();
       if (next === undefined) throw new Error("no scripted response left");
       if (next instanceof Error) throw next;
-      return { text: next, usage: { inputTokens: 1000, outputTokens: 500 } };
+      return { text: next, usage };
     },
   };
 }
@@ -88,20 +94,23 @@ describe("parsing", () => {
 
 describe("runAdvisor", () => {
   const prompt = advisorPrompt("Claude", "Q?");
+  const bigCap = (): CostCap => ({ capUsd: 999, spentUsd: 0 });
 
   it("returns ok with cost from actual usage on first try", async () => {
     const adapter = fakeAdapter("anthropic", [VALID_REPLY]);
-    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt);
+    const cap = bigCap();
+    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt, cap);
     expect(outcome.status).toBe("ok");
     expect(outcome.reply?.position).toBe("Yes, with caveats.");
     expect(adapter.calls).toHaveLength(1);
     // 1000 in @ $3/M + 500 out @ $15/M
     expect(outcome.costUsd).toBeCloseTo(0.003 + 0.0075, 10);
+    expect(cap.spentUsd).toBeCloseTo(outcome.costUsd, 10); // spend recorded on the shared cap
   });
 
   it("retries once on garbage, then succeeds", async () => {
     const adapter = fakeAdapter("anthropic", ["not json at all", VALID_REPLY]);
-    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt);
+    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt, bigCap());
     expect(outcome.status).toBe("ok");
     expect(adapter.calls).toHaveLength(2);
     expect(adapter.calls[1]).toContain("previous reply was not a valid JSON");
@@ -110,17 +119,61 @@ describe("runAdvisor", () => {
 
   it("marks the advisor malformed after the second failure", async () => {
     const adapter = fakeAdapter("anthropic", ["garbage", "still garbage"]);
-    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt);
+    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt, bigCap());
     expect(outcome.status).toBe("malformed");
     expect(outcome.detail).toContain("after one retry");
     expect(outcome.costUsd).toBeGreaterThan(0); // failed calls still cost money
   });
 
-  it("captures thrown provider errors without throwing", async () => {
-    const adapter = fakeAdapter("anthropic", [new Error("401 invalid x-api-key")]);
-    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt);
+  it("captures thrown provider errors without throwing, redacting key material", async () => {
+    const adapter = fakeAdapter("anthropic", [
+      new Error("401 invalid key sk-ant-api03-SUPERSECRETVALUE provided"),
+    ]);
+    const outcome = await runAdvisor(adapter, "Claude", model("anthro-med"), prompt, bigCap());
     expect(outcome.status).toBe("error");
     expect(outcome.detail).toContain("401");
+    expect(outcome.detail).not.toContain("SUPERSECRETVALUE");
+    expect(outcome.detail).toContain("[redacted-key]");
+  });
+
+  it("skips the retry when the budget cap is already breached", async () => {
+    const adapter = fakeAdapter("anthropic", ["garbage", VALID_REPLY]);
+    // First call costs ~$0.0105, which exceeds this cap — the retry must not fire.
+    const outcome = await runAdvisor(
+      adapter,
+      "Claude",
+      model("anthro-med"),
+      prompt,
+      { capUsd: 0.001, spentUsd: 0 },
+    );
+    expect(outcome.status).toBe("malformed");
+    expect(outcome.detail).toContain("retry skipped");
+    expect(adapter.calls).toHaveLength(1);
+  });
+
+  it("times out a hung provider call", async () => {
+    const hung: ProviderAdapter = {
+      provider: "anthropic",
+      complete: () => new Promise(() => {}), // never resolves
+    };
+    const outcome = await runAdvisor(hung, "Claude", model("anthro-med"), prompt, bigCap(), 25);
+    expect(outcome.status).toBe("error");
+    expect(outcome.detail).toContain("timed out");
+  });
+});
+
+describe("redactSecrets", () => {
+  it("scrubs provider key shapes", () => {
+    expect(redactSecrets("key sk-proj-abc123XYZ_456 rejected")).not.toContain("abc123XYZ");
+    expect(redactSecrets("bad AIzaSyFAKEKEYMATERIAL here")).not.toContain("FAKEKEYMATERIAL");
+    expect(redactSecrets("token xai-FAKEFAKEFAKE1234 bad")).not.toContain("FAKEFAKEFAKE1234");
+    expect(redactSecrets("no secrets here")).toBe("no secrets here");
+  });
+
+  it("leaves hyphenated prose alone (found in a real advisor position)", () => {
+    expect(redactSecrets("a risk-tolerant, risk-specific plan")).toBe(
+      "a risk-tolerant, risk-specific plan",
+    );
   });
 });
 
@@ -185,6 +238,26 @@ describe("conveneCouncil", () => {
     const synthPrompt = adapters.google.calls[1];
     expect(synthPrompt).toContain("Advisors without a position");
     expect(synthPrompt).toContain("GPT (oai-med): malformed");
+  });
+
+  it("aborts synthesis when actual spend breaches the cap mid-flight", async () => {
+    const adapters = {
+      // Valid reply, but enormous actual usage: ~$3000 against the $999 test budget.
+      anthropic: fakeAdapter("anthropic", [VALID_REPLY], {
+        inputTokens: 1e9,
+        outputTokens: 500,
+      }),
+      openai: fakeAdapter("openai", [VALID_REPLY]),
+      google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
+      xai: fakeAdapter("xai", []),
+    };
+    const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
+
+    expect(result.capBreached).toBe(true);
+    expect(result.outcomes.filter((o) => o.status === "ok")).toHaveLength(3); // positions kept
+    expect(result.dissent).toContain("aborted");
+    expect(result.synthesis).toContain("BUDGET CAP BREACHED");
+    expect(adapters.google.calls).toHaveLength(1); // advisor call only — no synth call
   });
 
   it("skips synthesis entirely when every advisor fails", async () => {

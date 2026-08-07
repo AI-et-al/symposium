@@ -13,8 +13,8 @@ export const openaiAdapter: ProviderAdapter = {
       input: prompt,
       max_output_tokens: maxOutputTokens,
       // GPT-5.x reasoning tokens bill as output and count against max_output_tokens;
-      // minimal effort keeps the budget for the contract reply.
-      reasoning: { effort: "minimal" },
+      // 'none' keeps the budget for the contract reply ('minimal' was dropped in gpt-5.6).
+      reasoning: { effort: "none" },
     });
 
     return {

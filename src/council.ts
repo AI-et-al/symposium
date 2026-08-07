@@ -12,6 +12,7 @@ import {
 import { anthropicAdapter } from "./providers/anthropic.js";
 import { googleAdapter } from "./providers/google.js";
 import { openaiAdapter } from "./providers/openai.js";
+import { xaiAdapter } from "./providers/xai.js";
 import type { CompletionUsage, ProviderAdapter } from "./providers/types.js";
 
 /** Advisor response contract (spec §2) — strict JSON, one retry, then malformed. */
@@ -46,6 +47,7 @@ export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
   anthropic: anthropicAdapter,
   openai: openaiAdapter,
   google: googleAdapter,
+  xai: xaiAdapter,
 };
 
 export function costOf(model: ModelEntry, usage: CompletionUsage): number {
@@ -54,7 +56,7 @@ export function costOf(model: ModelEntry, usage: CompletionUsage): number {
 
 export function advisorPrompt(name: AdvisorName, question: string, context?: string): string {
   return [
-    `You are ${name}, one advisor on a three-model AI council. Answer independently; the other advisors cannot see your reply.`,
+    `You are ${name}, one advisor on a council of AI models. Answer independently; the other advisors cannot see your reply.`,
     ``,
     `Question: ${question}`,
     ...(context ? [``, `Context: ${context}`] : []),

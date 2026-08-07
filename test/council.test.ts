@@ -155,6 +155,7 @@ describe("conveneCouncil", () => {
       openai: fakeAdapter("openai", [VALID_REPLY]),
       // medium tier -> synth is goog-high; google gets the advisor call then the synth call
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
+      xai: fakeAdapter("xai", []), // no XAI key in ALL_KEYS -> Grok never seated
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -176,6 +177,7 @@ describe("conveneCouncil", () => {
       anthropic: fakeAdapter("anthropic", [VALID_REPLY]),
       openai: fakeAdapter("openai", ["garbage", "garbage again"]),
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
+      xai: fakeAdapter("xai", []),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -191,6 +193,7 @@ describe("conveneCouncil", () => {
       anthropic: fakeAdapter("anthropic", [boom(), boom()]),
       openai: fakeAdapter("openai", [boom(), boom()]),
       google: fakeAdapter("google", [boom(), boom()]),
+      xai: fakeAdapter("xai", []),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 

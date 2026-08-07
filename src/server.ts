@@ -44,14 +44,14 @@ function positionOf(outcome: AdvisorOutcome): AdvisorPosition {
   };
 }
 
-const server = new McpServer({ name: "symposium", version: "0.3.0" });
+const server = new McpServer({ name: "symposium", version: "0.4.0" });
 
 server.registerTool(
   "convene_council",
   {
     title: "Convene the council",
     description:
-      "Convene a council of AI advisors (Claude, GPT, Gemini) on one question. " +
+      "Convene a council of AI advisors (Claude, GPT, Gemini, Grok) on one question. " +
       "Fans out to live advisors in parallel, surfaces disagreement verbatim in a DISSENT " +
       "section, synthesizes (or, for high/audited stakes, stops with open questions for the " +
       "human), and writes the full deliberation to a Markdown ledger. Cost is estimated " +

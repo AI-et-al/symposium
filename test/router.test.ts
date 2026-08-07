@@ -24,6 +24,9 @@ const FIXTURE: Catalog = {
     { id: "goog-low", provider: "google", tier: "low", in_per_mtok: 0.3, out_per_mtok: 2.5 },
     { id: "goog-med", provider: "google", tier: "medium", in_per_mtok: 1.5, out_per_mtok: 7.5 },
     { id: "goog-high", provider: "google", tier: "high", in_per_mtok: 2, out_per_mtok: 12 },
+    { id: "xai-low", provider: "xai", tier: "low", in_per_mtok: 1, out_per_mtok: 2 },
+    { id: "xai-med", provider: "xai", tier: "medium", in_per_mtok: 1.25, out_per_mtok: 2.5 },
+    { id: "xai-high", provider: "xai", tier: "high", in_per_mtok: 2, out_per_mtok: 6 },
   ],
 };
 
@@ -31,6 +34,7 @@ const ALL_KEYS = {
   ANTHROPIC_API_KEY: "k1",
   OPENAI_API_KEY: "k2",
   GEMINI_API_KEY: "k3",
+  XAI_API_KEY: "k4",
 };
 
 // 400 chars -> exactly 100 estimated tokens
@@ -60,24 +64,30 @@ describe("stakes → tier mapping", () => {
 });
 
 describe("cost estimate", () => {
-  it("matches the hand-computed value (low tier, 3 advisors)", () => {
+  it("matches the hand-computed value (low tier, 4 advisors)", () => {
     const p = plan({ stakes: "low" });
 
     const promptTokens = 100 + ADVISOR_PROMPT_OVERHEAD_TOKENS; // 500
     const advisorCost = (model: { in: number; out: number }) =>
       (promptTokens / 1e6) * model.in + (MAX_ADVISOR_TOKENS / 1e6) * model.out;
-    // Synth tier is medium (one above low); cheapest medium synth call is goog-med.
-    const synthPromptTokens = 3 * MAX_ADVISOR_TOKENS + 100 + SYNTH_PROMPT_OVERHEAD_TOKENS;
-    const synthCost = (synthPromptTokens / 1e6) * 1.5 + (MAX_SYNTH_TOKENS / 1e6) * 7.5;
+    // Synth tier is medium (one above low); cheapest medium synth call is xai-med.
+    const synthPromptTokens = 4 * MAX_ADVISOR_TOKENS + 100 + SYNTH_PROMPT_OVERHEAD_TOKENS;
+    const synthCost = (synthPromptTokens / 1e6) * 1.25 + (MAX_SYNTH_TOKENS / 1e6) * 2.5;
 
     const expected =
       advisorCost({ in: 1, out: 5 }) + // anthro-low
       advisorCost({ in: 0.2, out: 1.2 }) + // oai-low
       advisorCost({ in: 0.3, out: 2.5 }) + // goog-low
+      advisorCost({ in: 1, out: 2 }) + // xai-low
       synthCost;
 
     expect(p.estimateUsd).toBeCloseTo(expected, 10);
-    expect(p.advisors.map((a) => a.modelId)).toEqual(["anthro-low", "oai-low", "goog-low"]);
+    expect(p.advisors.map((a) => a.modelId)).toEqual([
+      "anthro-low",
+      "oai-low",
+      "goog-low",
+      "xai-low",
+    ]);
   });
 
   it("estimate excludes advisors whose key is missing", () => {
@@ -91,7 +101,7 @@ describe("cost estimate", () => {
 
 describe("budget defaults and overrides", () => {
   it.each([
-    ["low", 0.05],
+    ["low", 0.1],
     ["medium", 0.25],
     ["high", 1.0],
     ["audited", 1.0],
@@ -131,14 +141,14 @@ describe("downgrade and refusal", () => {
 });
 
 describe("advisor availability", () => {
-  it("proceeds with 2 advisors and a notice when one key is missing", () => {
+  it("proceeds with remaining advisors and a notice when one key is missing", () => {
     const p = plan({}, { ...ALL_KEYS, GEMINI_API_KEY: undefined as never });
     expect(p.refusal).toBeUndefined();
     const gemini = p.advisors.find((a) => a.name === "Gemini")!;
     expect(gemini.available).toBe(false);
     expect(gemini.modelId).toBeNull();
     expect(gemini.notice).toContain("GEMINI_API_KEY");
-    expect(p.advisors.filter((a) => a.available)).toHaveLength(2);
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(3);
   });
 
   it("refuses with fewer than 2 advisors, naming the missing keys", () => {
@@ -147,23 +157,24 @@ describe("advisor availability", () => {
     expect(p.refusal).toContain("at least 2");
     expect(p.refusal).toContain("OPENAI_API_KEY");
     expect(p.refusal).toContain("GEMINI_API_KEY");
+    expect(p.refusal).toContain("XAI_API_KEY");
   });
 });
 
 describe("synthesizer selection", () => {
   it("picks the cheapest model one tier above the advisors", () => {
-    // Advisors low -> synth medium; goog-med is the cheapest medium.
-    expect(plan({ stakes: "low" }).synthModelId).toBe("goog-med");
+    // Advisors low -> synth medium; xai-med is the cheapest medium.
+    expect(plan({ stakes: "low" }).synthModelId).toBe("xai-med");
   });
 
   it("clamps to the cheapest top-tier model when advisors are already high", () => {
-    // No tier above high; goog-high is the cheapest high.
-    expect(plan({ stakes: "high" }).synthModelId).toBe("goog-high");
+    // No tier above high; xai-high is the cheapest high.
+    expect(plan({ stakes: "high" }).synthModelId).toBe("xai-high");
   });
 
   it("only considers synth models from providers with keys", () => {
-    const p = plan({ stakes: "low" }, { ...ALL_KEYS, GEMINI_API_KEY: undefined as never });
-    expect(p.synthModelId).toBe("oai-med"); // goog-med excluded; oai-med beats anthro-med
+    const p = plan({ stakes: "low" }, { ...ALL_KEYS, XAI_API_KEY: undefined as never });
+    expect(p.synthModelId).toBe("goog-med"); // xai-med excluded; goog-med is next-cheapest
   });
 });
 
@@ -172,7 +183,7 @@ describe("live models.json", () => {
     const catalog = loadCatalog();
     expect(catalog.schema).toBe("symposium-models/v1");
     // One model per provider per tier — the estimator depends on this shape.
-    for (const provider of ["anthropic", "openai", "google"] as const) {
+    for (const provider of ["anthropic", "openai", "google", "xai"] as const) {
       for (const tier of ["low", "medium", "high"] as const) {
         expect(
           catalog.models.filter((m) => m.provider === provider && m.tier === tier),

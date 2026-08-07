@@ -133,11 +133,12 @@ server.registerTool(
       estimateBlock(plan),
       ``,
       `2. Positions:`,
-      ...positions.map(
-        (p) =>
-          `   - ${p.advisor} (${p.modelId}, confidence ${p.confidence.toFixed(2)}): ` +
-          p.position.replace(/\n+/g, " "),
-      ),
+      ...positions.map((p) => {
+        // Confidence is only meaningful for seats that actually spoke.
+        const spoke = !/^(ERROR|MALFORMED|Skipped)/.test(p.position);
+        const label = spoke ? `, confidence ${p.confidence.toFixed(2)}` : "";
+        return `   - ${p.advisor} (${p.modelId}${label}): ` + p.position.replace(/\n+/g, " ");
+      }),
       ``,
       `3. DISSENT:`,
       ...result.dissent.split("\n").map((line) => `   ${line}`),

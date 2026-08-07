@@ -112,6 +112,11 @@ server.registerTool(
         selfObjection: "n/a",
       }));
     const positions = [...result.outcomes.map(positionOf), ...skippedSeats];
+    // Confidence is only meaningful for seats that actually spoke — keyed off status, not prose.
+    const spokeFlags = [
+      ...result.outcomes.map((o) => o.status === "ok"),
+      ...skippedSeats.map(() => false),
+    ];
     const latencyMs = Date.now() - started;
 
     const ledgerPath = writeLedger({
@@ -133,10 +138,8 @@ server.registerTool(
       estimateBlock(plan),
       ``,
       `2. Positions:`,
-      ...positions.map((p) => {
-        // Confidence is only meaningful for seats that actually spoke.
-        const spoke = !/^(ERROR|MALFORMED|Skipped)/.test(p.position);
-        const label = spoke ? `, confidence ${p.confidence.toFixed(2)}` : "";
+      ...positions.map((p, i) => {
+        const label = spokeFlags[i] ? `, confidence ${p.confidence.toFixed(2)}` : "";
         return `   - ${p.advisor} (${p.modelId}${label}): ` + p.position.replace(/\n+/g, " ");
       }),
       ``,

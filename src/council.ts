@@ -41,6 +41,8 @@ export interface CouncilResult {
   dissent: string;
   synthesis: string;
   totalCostUsd: number;
+  /** True when actual spend hit the budget cap mid-flight and synthesis was skipped. */
+  capBreached: boolean;
 }
 
 export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
@@ -49,6 +51,45 @@ export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
   google: googleAdapter,
   xai: xaiAdapter,
 };
+
+/** Per-advisor call ceiling (spec §5 P4: 60s/advisor); applies to first call and retry separately. */
+export const ADVISOR_TIMEOUT_MS = 60_000;
+/** Synthesis reads N positions and thinks before writing — it earns more rope than an advisor. */
+export const SYNTH_TIMEOUT_MS = 120_000;
+
+/** Actual-usage spend, shared across the convening; the hard cap the estimate only predicted. */
+export interface CostCap {
+  capUsd: number;
+  spentUsd: number;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/**
+ * Provider error messages sometimes echo credentials (OpenAI 401s quote the key).
+ * Nothing key-shaped may reach the ledger or the tool response (spec §4).
+ */
+export function redactSecrets(text: string): string {
+  // Word boundaries + length floors keep prose like "risk-tolerant" intact.
+  return text
+    .replace(/\bsk-[A-Za-z0-9_*-]{10,}/g, "[redacted-key]")
+    .replace(/\bAIza[A-Za-z0-9_-]{10,}/g, "[redacted-key]")
+    .replace(/\bxai-[A-Za-z0-9_-]{12,}/g, "[redacted-key]");
+}
 
 export function costOf(model: ModelEntry, usage: CompletionUsage): number {
   return (usage.inputTokens / 1e6) * model.in_per_mtok + (usage.outputTokens / 1e6) * model.out_per_mtok;
@@ -152,18 +193,41 @@ export async function runAdvisor(
   name: AdvisorName,
   model: ModelEntry,
   prompt: string,
+  cap: CostCap,
+  timeoutMs: number = ADVISOR_TIMEOUT_MS,
 ): Promise<AdvisorOutcome> {
   let costUsd = 0;
+  const charge = (usage: CompletionUsage) => {
+    const cost = costOf(model, usage);
+    costUsd += cost;
+    cap.spentUsd += cost;
+  };
+
   try {
-    let completion = await adapter.complete(model.id, prompt, MAX_ADVISOR_TOKENS, { json: true });
-    costUsd += costOf(model, completion.usage);
+    let completion = await withTimeout(
+      adapter.complete(model.id, prompt, MAX_ADVISOR_TOKENS, { json: true }),
+      timeoutMs,
+      `${name} advisor call`,
+    );
+    charge(completion.usage);
     let reply = parseReply(completion.text);
 
     if (!reply) {
-      completion = await adapter.complete(model.id, prompt + RETRY_SUFFIX, MAX_ADVISOR_TOKENS, {
-        json: true,
-      });
-      costUsd += costOf(model, completion.usage);
+      if (cap.spentUsd >= cap.capUsd) {
+        return {
+          advisor: name,
+          modelId: model.id,
+          status: "malformed",
+          detail: "invalid JSON; retry skipped — budget cap breached mid-flight",
+          costUsd,
+        };
+      }
+      completion = await withTimeout(
+        adapter.complete(model.id, prompt + RETRY_SUFFIX, MAX_ADVISOR_TOKENS, { json: true }),
+        timeoutMs,
+        `${name} retry call`,
+      );
+      charge(completion.usage);
       reply = parseReply(completion.text);
     }
 
@@ -181,7 +245,7 @@ export async function runAdvisor(
       advisor: name,
       modelId: model.id,
       status: "error",
-      detail: err instanceof Error ? err.message : String(err),
+      detail: redactSecrets(err instanceof Error ? err.message : String(err)),
       costUsd,
     };
   }
@@ -216,8 +280,10 @@ export async function conveneCouncil(
   plan: CouncilPlan,
   catalog: Catalog,
   adapters: Record<Provider, ProviderAdapter> = DEFAULT_ADAPTERS,
+  timeouts: { advisorMs?: number; synthMs?: number } = {},
 ): Promise<CouncilResult> {
   const seats = plan.advisors.filter((a) => a.available && a.modelId);
+  const cap: CostCap = { capUsd: plan.budgetUsd, spentUsd: 0 };
 
   const settled = await Promise.allSettled(
     seats.map((seat) =>
@@ -226,6 +292,8 @@ export async function conveneCouncil(
         seat.name,
         entryById(catalog, seat.modelId as string),
         advisorPrompt(seat.name, input.question, input.context),
+        cap,
+        timeouts.advisorMs ?? ADVISOR_TIMEOUT_MS,
       ),
     ),
   );
@@ -241,26 +309,51 @@ export async function conveneCouncil(
         },
   );
 
-  let dissent: string;
-  let synthesis: string;
+  let dissent = "";
+  let synthesis = "";
   let synthCostUsd = 0;
+  let capBreached = false;
 
   const okCount = outcomes.filter((o) => o.status === "ok").length;
   if (okCount === 0 || !plan.synthModelId) {
     dissent = "*No positions returned — every advisor failed; nothing to dissent from.*";
     synthesis = "No synthesis possible: the council returned no valid positions.";
+  } else if (cap.spentUsd >= cap.capUsd) {
+    // Hard cap enforced against ACTUAL usage (spec §3): advisors already returned are
+    // kept and recorded; the remaining call (synthesis) is aborted.
+    capBreached = true;
+    dissent = "*Synthesis aborted — budget cap breached mid-flight; no dissent extraction performed.*";
+    synthesis =
+      `BUDGET CAP BREACHED: actual spend $${cap.spentUsd.toFixed(4)} reached the cap ` +
+      `$${cap.capUsd.toFixed(4)} before synthesis. Advisor positions above are preserved; ` +
+      `re-convene with a higher budget_usd to synthesize.`;
   } else {
     const synthModel = entryById(catalog, plan.synthModelId);
-    const completion = await adapters[synthModel.provider].complete(
-      synthModel.id,
-      synthesisPrompt(input.question, input.stakes, outcomes, input.context),
-      MAX_SYNTH_TOKENS,
-      { json: false },
+    const completion = await withTimeout(
+      adapters[synthModel.provider].complete(
+        synthModel.id,
+        synthesisPrompt(input.question, input.stakes, outcomes, input.context),
+        MAX_SYNTH_TOKENS,
+        { json: false },
+      ),
+      timeouts.synthMs ?? SYNTH_TIMEOUT_MS,
+      "synthesis call",
+    ).then(
+      (c) => c,
+      (err) => {
+        // A failed synthesizer must not sink the convening: preserve positions, mark loudly.
+        dissent = "*Synthesis failed — no dissent extraction performed.*";
+        synthesis = `SYNTHESIS FAILED: ${redactSecrets(err instanceof Error ? err.message : String(err))}. Advisor positions above are preserved.`;
+        return null;
+      },
     );
-    synthCostUsd = costOf(synthModel, completion.usage);
-    ({ dissent, synthesis } = splitSynthOutput(completion.text));
+    if (completion) {
+      synthCostUsd = costOf(synthModel, completion.usage);
+      cap.spentUsd += synthCostUsd;
+      ({ dissent, synthesis } = splitSynthOutput(completion.text));
+    }
   }
 
   const totalCostUsd = outcomes.reduce((sum, o) => sum + o.costUsd, 0) + synthCostUsd;
-  return { outcomes, dissent, synthesis, totalCostUsd };
+  return { outcomes, dissent, synthesis, totalCostUsd, capBreached };
 }

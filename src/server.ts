@@ -44,7 +44,7 @@ function positionOf(outcome: AdvisorOutcome): AdvisorPosition {
   };
 }
 
-const server = new McpServer({ name: "symposium", version: "0.4.0" });
+const server = new McpServer({ name: "symposium", version: "0.5.0" });
 
 server.registerTool(
   "convene_council",
@@ -147,6 +147,9 @@ server.registerTool(
       ``,
       `5. Actual cost: $${result.totalCostUsd.toFixed(4)} (estimate was $${plan.estimateUsd.toFixed(4)}) | ` +
         `latency: ${latencyMs}ms | ledger: ${ledgerPath}`,
+      ...(result.capBreached
+        ? [`   ⚠ budget cap breached mid-flight — synthesis was aborted; positions are preserved`]
+        : []),
     ].join("\n");
 
     return { content: [{ type: "text", text }] };

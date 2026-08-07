@@ -5,12 +5,12 @@ import { z } from "zod";
 import type { Stakes } from "./ledger.js";
 
 export type Tier = "low" | "medium" | "high";
-export type Provider = "anthropic" | "openai" | "google";
-export type AdvisorName = "Claude" | "GPT" | "Gemini";
+export type Provider = "anthropic" | "openai" | "google" | "xai";
+export type AdvisorName = "Claude" | "GPT" | "Gemini" | "Grok";
 
 const modelEntrySchema = z.object({
   id: z.string().min(1),
-  provider: z.enum(["anthropic", "openai", "google"]),
+  provider: z.enum(["anthropic", "openai", "google", "xai"]),
   tier: z.enum(["low", "medium", "high"]),
   in_per_mtok: z.number().positive(),
   out_per_mtok: z.number().positive(),
@@ -35,19 +35,24 @@ export const ADVISORS: ReadonlyArray<{ name: AdvisorName; provider: Provider; en
   { name: "Claude", provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
   { name: "GPT", provider: "openai", envKey: "OPENAI_API_KEY" },
   { name: "Gemini", provider: "google", envKey: "GEMINI_API_KEY" },
+  { name: "Grok", provider: "xai", envKey: "XAI_API_KEY" },
 ];
 
 /** Max output tokens granted per advisor (JSON contract: <=300-word position + fields). */
 export const MAX_ADVISOR_TOKENS = 1024;
-/** Max output tokens for the synthesizer (DISSENT table quotes advisors verbatim). */
-export const MAX_SYNTH_TOKENS = 2048;
+/**
+ * Max output tokens for the synthesizer (DISSENT table quotes advisors verbatim).
+ * Sized with thinking headroom: frontier synth models reason before writing, and those
+ * tokens bill as output — at 2048 the first live convening truncated mid-DISSENT.
+ */
+export const MAX_SYNTH_TOKENS = 8192;
 /** Fixed instruction overhead added to the question when estimating an advisor prompt. */
 export const ADVISOR_PROMPT_OVERHEAD_TOKENS = 400;
 /** Fixed overhead for the synthesis rules prompt. */
 export const SYNTH_PROMPT_OVERHEAD_TOKENS = 300;
 
 export const DEFAULT_BUDGET_USD: Record<Stakes, number> = {
-  low: 0.05,
+  low: 0.1, // must clear the floor-tier estimate incl. synth thinking headroom
   medium: 0.25,
   high: 1.0,
   audited: 1.0,

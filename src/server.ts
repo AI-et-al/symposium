@@ -1,11 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { conveneCouncil, type AdvisorOutcome } from "./council.js";
 import { writeLedger, type AdvisorPosition, type Stakes } from "./ledger.js";
 import { loadCatalog, planCouncil, type CouncilPlan } from "./router.js";
-
-const STUB_NOTICE =
-  "Stub — no provider was called. Live advisors arrive in Phase 3.";
 
 const catalog = loadCatalog(); // fail fast on a malformed models.json
 
@@ -23,7 +21,30 @@ function estimateBlock(plan: CouncilPlan): string {
   return lines.join("\n");
 }
 
-const server = new McpServer({ name: "symposium", version: "0.2.0" });
+function positionOf(outcome: AdvisorOutcome): AdvisorPosition {
+  if (outcome.status === "ok" && outcome.reply) {
+    const framing = outcome.reply.dissent_from_framing;
+    return {
+      advisor: outcome.advisor,
+      modelId: outcome.modelId,
+      confidence: outcome.reply.confidence,
+      position:
+        outcome.reply.position + (framing ? `\n\n*Dissent from framing:* ${framing}` : ""),
+      uncertainties: outcome.reply.key_uncertainties,
+      selfObjection: outcome.reply.strongest_objection_to_own_position,
+    };
+  }
+  return {
+    advisor: outcome.advisor,
+    modelId: outcome.modelId,
+    confidence: 0,
+    position: `${outcome.status.toUpperCase()}: ${outcome.detail ?? "no detail"}`,
+    uncertainties: [],
+    selfObjection: "n/a",
+  };
+}
+
+const server = new McpServer({ name: "symposium", version: "0.3.0" });
 
 server.registerTool(
   "convene_council",
@@ -31,10 +52,11 @@ server.registerTool(
     title: "Convene the council",
     description:
       "Convene a council of AI advisors (Claude, GPT, Gemini) on one question. " +
-      "Surfaces disagreement verbatim, writes the deliberation to a Markdown ledger. " +
-      "Phase 2: real cost pre-flight and budget enforcement (downgrade/refuse); " +
-      "set dry_run to preview the estimate without writing a ledger. " +
-      "Positions are stubs until live advisors arrive in Phase 3.",
+      "Fans out to live advisors in parallel, surfaces disagreement verbatim in a DISSENT " +
+      "section, synthesizes (or, for high/audited stakes, stops with open questions for the " +
+      "human), and writes the full deliberation to a Markdown ledger. Cost is estimated " +
+      "pre-flight and enforced against a budget; set dry_run to preview the estimate " +
+      "without calling any provider or writing a ledger.",
     inputSchema: {
       question: z.string().min(1, "question must be non-empty"),
       context: z.string().optional(),
@@ -73,32 +95,37 @@ server.registerTool(
       return { content: [{ type: "text", text }] };
     }
 
-    const positions: AdvisorPosition[] = plan.advisors.map((a) => ({
-      advisor: a.name,
-      modelId: a.available ? (a.modelId ?? "unresolved") : "skipped",
-      confidence: 0,
-      position: a.available ? STUB_NOTICE : `Skipped: ${a.notice}`,
-      uncertainties: [],
-      selfObjection: "n/a (stub)",
-    }));
+    const result = await conveneCouncil(
+      { question, context, stakes: stakes as Stakes },
+      plan,
+      catalog,
+    );
 
-    const dissent = `- **stub** — ${STUB_NOTICE}`;
-    const synthesis = highStakes
-      ? `Open questions for the human: none yet — ${STUB_NOTICE}`
-      : `No synthesis — ${STUB_NOTICE}`;
+    const skippedSeats: AdvisorPosition[] = plan.advisors
+      .filter((a) => !a.available)
+      .map((a) => ({
+        advisor: a.name,
+        modelId: "skipped",
+        confidence: 0,
+        position: `Skipped: ${a.notice}`,
+        uncertainties: [],
+        selfObjection: "n/a",
+      }));
+    const positions = [...result.outcomes.map(positionOf), ...skippedSeats];
+    const latencyMs = Date.now() - started;
 
     const ledgerPath = writeLedger({
       date: new Date(started),
       question,
       context,
       stakes: stakes as Stakes,
-      advisorModelIds: plan.advisors.filter((a) => a.available).map((a) => a.modelId ?? "unresolved"),
+      advisorModelIds: result.outcomes.map((o) => o.modelId),
       synthModelId: plan.synthModelId ?? "none",
-      costUsd: 0,
-      latencyMs: Date.now() - started,
+      costUsd: result.totalCostUsd,
+      latencyMs,
       positions,
-      dissent,
-      synthesis,
+      dissent: result.dissent,
+      synthesis: result.synthesis,
       relations: [],
     });
 
@@ -106,14 +133,20 @@ server.registerTool(
       estimateBlock(plan),
       ``,
       `2. Positions:`,
-      ...positions.map((p) => `   - ${p.advisor} (${p.modelId}): ${p.position}`),
+      ...positions.map(
+        (p) =>
+          `   - ${p.advisor} (${p.modelId}, confidence ${p.confidence.toFixed(2)}): ` +
+          p.position.replace(/\n+/g, " "),
+      ),
       ``,
       `3. DISSENT:`,
-      `   ${dissent}`,
+      ...result.dissent.split("\n").map((line) => `   ${line}`),
       ``,
-      `4. ${highStakes ? "Open questions for the human" : "Synthesis"}: ${synthesis}`,
+      `4. ${highStakes ? "Open questions for the human" : "Synthesis"}:`,
+      ...result.synthesis.split("\n").map((line) => `   ${line}`),
       ``,
-      `5. Actual cost: $0.0000 (stub — no provider called) | latency: ${Date.now() - started}ms | ledger: ${ledgerPath}`,
+      `5. Actual cost: $${result.totalCostUsd.toFixed(4)} (estimate was $${plan.estimateUsd.toFixed(4)}) | ` +
+        `latency: ${latencyMs}ms | ledger: ${ledgerPath}`,
     ].join("\n");
 
     return { content: [{ type: "text", text }] };

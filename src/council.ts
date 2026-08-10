@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Stakes } from "./ledger.js";
 import {
-  MAX_ADVISOR_TOKENS,
+  ADVISOR_TOKENS,
   MAX_SYNTH_TOKENS,
   type AdvisorName,
   type Catalog,
@@ -10,6 +10,7 @@ import {
   type Provider,
 } from "./router.js";
 import { anthropicAdapter } from "./providers/anthropic.js";
+import { deepseekAdapter } from "./providers/deepseek.js";
 import { googleAdapter } from "./providers/google.js";
 import { openaiAdapter } from "./providers/openai.js";
 import { xaiAdapter } from "./providers/xai.js";
@@ -35,14 +36,26 @@ export interface AdvisorOutcome {
   costUsd: number;
 }
 
+export type Verdict = "adopt" | "reject" | "partial" | "abstain" | "open" | "unspecified";
+
+export interface AdvisorVerdict {
+  advisor: AdvisorName;
+  verdict: Verdict;
+  note?: string;
+}
+
 export interface CouncilResult {
   outcomes: AdvisorOutcome[];
   /** Markdown body of the DISSENT section (the ledger adds the heading). */
   dissent: string;
+  /** Machine-readable per-advisor verdicts (ledger schema v2); empty when synthesis never ran. */
+  verdicts: AdvisorVerdict[];
   synthesis: string;
   totalCostUsd: number;
   /** True when actual spend hit the budget cap mid-flight and synthesis was skipped. */
   capBreached: boolean;
+  /** False when no synthesizer completed — the dissent body is a marker, not an adjudication. */
+  dissentAdjudicated: boolean;
 }
 
 export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
@@ -50,6 +63,7 @@ export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
   openai: openaiAdapter,
   google: googleAdapter,
   xai: xaiAdapter,
+  deepseek: deepseekAdapter,
 };
 
 /** Per-advisor call ceiling (spec §5 P4: 60s/advisor); applies to first call and retry separately. */
@@ -145,19 +159,33 @@ export function synthesisPrompt(
     .map((o) => `- ${o.advisor} (${o.modelId}): ${o.status} — has no position`)
     .join("\n");
 
+  const highStakes = stakes === "high" || stakes === "audited";
+  const names = outcomes.map((o) => o.advisor).join(", ");
+
   return [
     SYNTHESIS_RULES,
     ``,
     `Stakes: ${stakes}`,
     ``,
-    `Format your reply as exactly two markdown sections:`,
+    `Format your reply as exactly three markdown sections, in this order:`,
+    ``,
     `## DISSENT`,
-    `A bullet list — one bullet per point of disagreement, quoting each advisor verbatim, ` +
-      `attributed by name. If there is no material dissent, write exactly: - *No material dissent recorded.*`,
+    `One '### N · <short topic>' subheading per material disagreement. Under each, quote the`,
+    `disagreeing advisors verbatim as blockquotes in exactly this shape:`,
+    `> **<AdvisorName> —** "<verbatim quote>"`,
+    `If there is no material dissent, write exactly: - *No material dissent recorded.*`,
+    ``,
+    `## VERDICTS`,
+    `Exactly one line per advisor (${names}), machine-readable, in exactly this shape:`,
+    `- <AdvisorName>: <verdict> — <one short clause of reason>`,
+    highStakes
+      ? `Since stakes are high/audited you must not conclude: use the verdict 'open' for advisors whose positions remain live, 'abstain' for advisors without a position.`
+      : `Verdict is one of: adopt, reject, partial (adopted with qualifications), abstain (no position or not judged).`,
+    ``,
     `## SYNTHESIS`,
-    stakes === "high" || stakes === "audited"
+    highStakes
       ? `Per rule (3): do NOT conclude — lay out the tension, then end with the 2-4 questions a human must answer.`
-      : `Your synthesis, stating which advisor positions it adopts, which it rejects, and why.`,
+      : `Your synthesis as prose, stating which advisor positions it adopts, which it rejects, and why. The prose must agree with the VERDICTS lines.`,
     ``,
     `Question the council was asked: ${question}`,
     ...(context ? [``, `Context: ${context}`] : []),
@@ -165,7 +193,7 @@ export function synthesisPrompt(
     `Advisor positions (JSON, verbatim):`,
     ``,
     positions,
-    ...(casualties ? [``, `Advisors without a position (do not invent views for them):`, casualties] : []),
+    ...(casualties ? [``, `Advisors without a position (do not invent views for them; verdict them 'abstain'):`, casualties] : []),
   ].join("\n");
 }
 
@@ -194,8 +222,10 @@ export async function runAdvisor(
   model: ModelEntry,
   prompt: string,
   cap: CostCap,
-  timeoutMs: number = ADVISOR_TIMEOUT_MS,
+  opts: { maxTokens?: number; timeoutMs?: number } = {},
 ): Promise<AdvisorOutcome> {
+  const maxTokens = opts.maxTokens ?? ADVISOR_TOKENS.low;
+  const timeoutMs = opts.timeoutMs ?? ADVISOR_TIMEOUT_MS;
   let costUsd = 0;
   const charge = (usage: CompletionUsage) => {
     const cost = costOf(model, usage);
@@ -205,7 +235,7 @@ export async function runAdvisor(
 
   try {
     let completion = await withTimeout(
-      adapter.complete(model.id, prompt, MAX_ADVISOR_TOKENS, { json: true }),
+      adapter.complete(model.id, prompt, maxTokens, { json: true }),
       timeoutMs,
       `${name} advisor call`,
     );
@@ -223,7 +253,7 @@ export async function runAdvisor(
         };
       }
       completion = await withTimeout(
-        adapter.complete(model.id, prompt + RETRY_SUFFIX, MAX_ADVISOR_TOKENS, { json: true }),
+        adapter.complete(model.id, prompt + RETRY_SUFFIX, maxTokens, { json: true }),
         timeoutMs,
         `${name} retry call`,
       );
@@ -251,19 +281,52 @@ export async function runAdvisor(
   }
 }
 
-/** Splits the synthesizer's output into DISSENT and SYNTHESIS bodies. */
-export function splitSynthOutput(text: string): { dissent: string; synthesis: string } {
+/** One verdict line per advisor, tolerant of bolding and dash variants; unmatched → unspecified. */
+export function parseVerdicts(body: string, advisors: AdvisorName[]): AdvisorVerdict[] {
+  return advisors.map((advisor) => {
+    const re = new RegExp(
+      `^[-*]\\s*\\**${advisor}\\**\\s*:\\s*\\**(adopt|reject|partial|abstain|open)\\**\\b(?:\\s*[—–-]+\\s*(.*))?`,
+      "im",
+    );
+    const match = re.exec(body);
+    return match
+      ? {
+          advisor,
+          verdict: match[1].toLowerCase() as Verdict,
+          ...(match[2] ? { note: match[2].trim() } : {}),
+        }
+      : { advisor, verdict: "unspecified" as Verdict };
+  });
+}
+
+export interface SynthSections {
+  dissent: string;
+  verdicts: AdvisorVerdict[];
+  synthesis: string;
+}
+
+/** Splits the synthesizer's output into DISSENT, VERDICTS, and SYNTHESIS bodies. */
+export function splitSynthOutput(text: string, advisors: AdvisorName[]): SynthSections {
   const dissentMatch = /^#{1,3}\s*DISSENT\s*$/im.exec(text);
-  const synthMatch = /^#{1,3}\s*(?:SYNTHESIS|OPEN QUESTIONS)\s*$/im.exec(text);
+  const verdictsMatch = /^#{1,3}\s*VERDICTS\s*$/im.exec(text);
+  const synthMatch = /^#{1,3}\s*(?:SYNTHESIS|OPEN QUESTIONS[^\n]*)\s*$/im.exec(text);
   if (!dissentMatch || !synthMatch || synthMatch.index < dissentMatch.index) {
     // Manifesto: a synthesis that buries dissent is a bug of the highest severity — make it loud.
     return {
       dissent: "*SYNTHESIZER FORMAT FAILURE — dissent section missing; full output preserved under Synthesis.*",
+      verdicts: advisors.map((advisor) => ({ advisor, verdict: "unspecified" as Verdict })),
       synthesis: text.trim(),
     };
   }
+  const haveVerdicts =
+    verdictsMatch && verdictsMatch.index > dissentMatch.index && verdictsMatch.index < synthMatch.index;
+  const dissentEnd = haveVerdicts ? verdictsMatch.index : synthMatch.index;
+  const verdictsBody = haveVerdicts
+    ? text.slice(verdictsMatch.index + verdictsMatch[0].length, synthMatch.index)
+    : "";
   return {
-    dissent: text.slice(dissentMatch.index + dissentMatch[0].length, synthMatch.index).trim(),
+    dissent: text.slice(dissentMatch.index + dissentMatch[0].length, dissentEnd).trim(),
+    verdicts: parseVerdicts(verdictsBody, advisors),
     synthesis: text.slice(synthMatch.index + synthMatch[0].length).trim(),
   };
 }
@@ -293,7 +356,7 @@ export async function conveneCouncil(
         entryById(catalog, seat.modelId as string),
         advisorPrompt(seat.name, input.question, input.context),
         cap,
-        timeouts.advisorMs ?? ADVISOR_TIMEOUT_MS,
+        { maxTokens: ADVISOR_TOKENS[plan.tier], timeoutMs: timeouts.advisorMs },
       ),
     ),
   );
@@ -311,8 +374,10 @@ export async function conveneCouncil(
 
   let dissent = "";
   let synthesis = "";
+  let verdicts: AdvisorVerdict[] = [];
   let synthCostUsd = 0;
   let capBreached = false;
+  let dissentAdjudicated = false;
 
   const okCount = outcomes.filter((o) => o.status === "ok").length;
   if (okCount === 0 || !plan.synthModelId) {
@@ -350,10 +415,14 @@ export async function conveneCouncil(
     if (completion) {
       synthCostUsd = costOf(synthModel, completion.usage);
       cap.spentUsd += synthCostUsd;
-      ({ dissent, synthesis } = splitSynthOutput(completion.text));
+      ({ dissent, verdicts, synthesis } = splitSynthOutput(
+        completion.text,
+        outcomes.map((o) => o.advisor),
+      ));
+      dissentAdjudicated = true;
     }
   }
 
   const totalCostUsd = outcomes.reduce((sum, o) => sum + o.costUsd, 0) + synthCostUsd;
-  return { outcomes, dissent, synthesis, totalCostUsd, capBreached };
+  return { outcomes, dissent, verdicts, synthesis, totalCostUsd, capBreached, dissentAdjudicated };
 }

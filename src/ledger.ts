@@ -11,6 +11,14 @@ export interface AdvisorPosition {
   position: string;
   uncertainties: string[];
   selfObjection: string;
+  /** Actual per-seat spend (schema v2); 0 for skipped seats. */
+  costUsd?: number;
+}
+
+export interface LedgerVerdict {
+  advisor: string;
+  verdict: string;
+  note?: string;
 }
 
 export interface LedgerEntry {
@@ -25,6 +33,8 @@ export interface LedgerEntry {
   positions: AdvisorPosition[];
   /** Markdown list body for the DISSENT section. */
   dissent: string;
+  /** Machine-readable per-advisor verdicts (schema v2); may be empty when synthesis never ran. */
+  verdicts: LedgerVerdict[];
   /** Synthesis text, or open questions for the human when stakes are high/audited. */
   synthesis: string;
   /** Wikilink targets for the Relations section. */
@@ -58,12 +68,20 @@ function renderPositions(positions: AdvisorPosition[]): string {
   return positions
     .map(
       (p) =>
-        `### ${p.advisor} (${p.modelId}) — confidence ${p.confidence.toFixed(2)}\n` +
-        `${p.position}\n` +
+        `### ${p.advisor} (${p.modelId}) — confidence ${p.confidence.toFixed(2)}` +
+        (p.costUsd !== undefined ? ` — cost $${p.costUsd.toFixed(4)}` : "") +
+        `\n${p.position}\n` +
         `- Uncertainties: ${p.uncertainties.join("; ") || "none stated"}\n` +
         `- Self-objection: ${p.selfObjection}`,
     )
     .join("\n\n");
+}
+
+function renderVerdicts(verdicts: LedgerVerdict[]): string {
+  if (verdicts.length === 0) return "*None — synthesis did not run.*";
+  return verdicts
+    .map((v) => `- ${v.advisor}: ${v.verdict}${v.note ? ` — ${v.note}` : ""}`)
+    .join("\n");
 }
 
 export function renderLedger(entry: LedgerEntry): string {
@@ -75,7 +93,7 @@ export function renderLedger(entry: LedgerEntry): string {
     `- relates_to [[${slugify(entry.question)}]]`;
 
   return `---
-schema: symposium-ledger/v1
+schema: symposium-ledger/v2
 date: ${entry.date.toISOString()}
 stakes: ${entry.stakes}
 mode: ${mode}
@@ -93,6 +111,9 @@ ${renderPositions(entry.positions)}
 
 ## DISSENT
 ${entry.dissent}
+
+## Verdicts
+${renderVerdicts(entry.verdicts)}
 
 ## Synthesis
 ${entry.synthesis}

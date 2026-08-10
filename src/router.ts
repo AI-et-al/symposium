@@ -5,12 +5,12 @@ import { z } from "zod";
 import type { Stakes } from "./ledger.js";
 
 export type Tier = "low" | "medium" | "high";
-export type Provider = "anthropic" | "openai" | "google" | "xai";
-export type AdvisorName = "Claude" | "GPT" | "Gemini" | "Grok";
+export type Provider = "anthropic" | "openai" | "google" | "xai" | "deepseek";
+export type AdvisorName = "Claude" | "GPT" | "Gemini" | "Grok" | "DeepSeek";
 
 const modelEntrySchema = z.object({
   id: z.string().min(1),
-  provider: z.enum(["anthropic", "openai", "google", "xai"]),
+  provider: z.enum(["anthropic", "openai", "google", "xai", "deepseek"]),
   tier: z.enum(["low", "medium", "high"]),
   in_per_mtok: z.number().positive(),
   out_per_mtok: z.number().positive(),
@@ -36,10 +36,15 @@ export const ADVISORS: ReadonlyArray<{ name: AdvisorName; provider: Provider; en
   { name: "GPT", provider: "openai", envKey: "OPENAI_API_KEY" },
   { name: "Gemini", provider: "google", envKey: "GEMINI_API_KEY" },
   { name: "Grok", provider: "xai", envKey: "XAI_API_KEY" },
+  { name: "DeepSeek", provider: "deepseek", envKey: "DEEPSEEK_API_KEY" },
 ];
 
-/** Max output tokens granted per advisor (JSON contract: <=300-word position + fields). */
-export const MAX_ADVISOR_TOKENS = 1024;
+/**
+ * Max output tokens per advisor, by tier. Frontier models spend output tokens on
+ * internal reasoning we cannot always disable (P4 gate: Gemini 3.1 Pro malformed twice
+ * at 1024) — higher tiers get headroom so thinking doesn't truncate the JSON contract.
+ */
+export const ADVISOR_TOKENS: Record<Tier, number> = { low: 1024, medium: 2048, high: 4096 };
 /**
  * Max output tokens for the synthesizer (DISSENT table quotes advisors verbatim).
  * Sized with thinking headroom: frontier synth models reason before writing, and those
@@ -130,11 +135,11 @@ function estimateTier(
   for (const provider of availableProviders) {
     const model = modelFor(catalog, provider, tier);
     advisorModels.set(provider, model);
-    total += callCost(model, advisorPromptTokens, MAX_ADVISOR_TOKENS);
+    total += callCost(model, advisorPromptTokens, ADVISOR_TOKENS[tier]);
   }
 
   const synthPromptTokens =
-    availableProviders.length * MAX_ADVISOR_TOKENS + questionTokens + SYNTH_PROMPT_OVERHEAD_TOKENS;
+    availableProviders.length * ADVISOR_TOKENS[tier] + questionTokens + SYNTH_PROMPT_OVERHEAD_TOKENS;
   const synthCandidates = catalog.models.filter(
     (m) => m.tier === SYNTH_TIER[tier] && availableProviders.includes(m.provider),
   );

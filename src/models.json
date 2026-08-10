@@ -1,6 +1,6 @@
 {
   "schema": "symposium-models/v1",
-  "verified": "2026-08-06",
+  "verified": "2026-08-10",
   "models": [
     { "id": "claude-haiku-4-5", "provider": "anthropic", "tier": "low", "in_per_mtok": 1.0, "out_per_mtok": 5.0 },
     { "id": "claude-sonnet-5", "provider": "anthropic", "tier": "medium", "in_per_mtok": 3.0, "out_per_mtok": 15.0 },
@@ -13,6 +13,9 @@
     { "id": "gemini-3.1-pro-preview", "provider": "google", "tier": "high", "in_per_mtok": 2.0, "out_per_mtok": 12.0 },
     { "id": "grok-build-0.1", "provider": "xai", "tier": "low", "in_per_mtok": 1.0, "out_per_mtok": 2.0 },
     { "id": "grok-4.20-0309-non-reasoning", "provider": "xai", "tier": "medium", "in_per_mtok": 1.25, "out_per_mtok": 2.5 },
-    { "id": "grok-4.5", "provider": "xai", "tier": "high", "in_per_mtok": 2.0, "out_per_mtok": 6.0 }
+    { "id": "grok-4.5", "provider": "xai", "tier": "high", "in_per_mtok": 2.0, "out_per_mtok": 6.0 },
+    { "id": "deepseek-v4-flash", "provider": "deepseek", "tier": "low", "in_per_mtok": 0.14, "out_per_mtok": 0.28 },
+    { "id": "deepseek-v4-pro", "provider": "deepseek", "tier": "medium", "in_per_mtok": 0.435, "out_per_mtok": 0.87 },
+    { "id": "deepseek-v4-pro", "provider": "deepseek", "tier": "high", "in_per_mtok": 0.435, "out_per_mtok": 0.87 }
   ]
 }

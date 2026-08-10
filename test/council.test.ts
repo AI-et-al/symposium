@@ -40,7 +40,14 @@ const VALID_REPLY = JSON.stringify({
 
 const SYNTH_OUTPUT = [
   "## DISSENT",
-  '- **binding** — Claude: "cannot bind" | GPT: "binds via record"',
+  "### 1 · binding",
+  '> **Claude —** "cannot bind"',
+  ">",
+  '> **GPT —** "binds via record"',
+  "## VERDICTS",
+  "- Claude: adopt — the record does the work",
+  "- GPT: reject — overclaims enforcement",
+  "- Gemini: partial — adopted with caveats",
   "## SYNTHESIS",
   "Adopts Claude's framing; rejects GPT's, because enforcement requires persistence.",
 ].join("\n");
@@ -156,7 +163,9 @@ describe("runAdvisor", () => {
       provider: "anthropic",
       complete: () => new Promise(() => {}), // never resolves
     };
-    const outcome = await runAdvisor(hung, "Claude", model("anthro-med"), prompt, bigCap(), 25);
+    const outcome = await runAdvisor(hung, "Claude", model("anthro-med"), prompt, bigCap(), {
+      timeoutMs: 25,
+    });
     expect(outcome.status).toBe("error");
     expect(outcome.detail).toContain("timed out");
   });
@@ -178,21 +187,46 @@ describe("redactSecrets", () => {
 });
 
 describe("splitSynthOutput", () => {
-  it("splits DISSENT and SYNTHESIS bodies", () => {
-    const { dissent, synthesis } = splitSynthOutput(SYNTH_OUTPUT);
-    expect(dissent).toContain("**binding**");
+  const ADVISORS = ["Claude", "GPT", "Gemini"] as const;
+
+  it("splits DISSENT, VERDICTS, and SYNTHESIS bodies", () => {
+    const { dissent, verdicts, synthesis } = splitSynthOutput(SYNTH_OUTPUT, [...ADVISORS]);
+    expect(dissent).toContain("1 · binding");
     expect(dissent).not.toContain("## DISSENT");
+    expect(dissent).not.toContain("VERDICTS");
+    expect(verdicts).toEqual([
+      { advisor: "Claude", verdict: "adopt", note: "the record does the work" },
+      { advisor: "GPT", verdict: "reject", note: "overclaims enforcement" },
+      { advisor: "Gemini", verdict: "partial", note: "adopted with caveats" },
+    ]);
     expect(synthesis).toContain("Adopts Claude's framing");
   });
 
-  it("accepts OPEN QUESTIONS as the second section (high stakes)", () => {
-    const { synthesis } = splitSynthOutput("## DISSENT\n- x\n## OPEN QUESTIONS\n1. Who decides?");
+  it("accepts OPEN QUESTIONS FOR THE HUMAN as the final section (high stakes)", () => {
+    const { verdicts, synthesis } = splitSynthOutput(
+      "## DISSENT\n- x\n## VERDICTS\n- Claude: open — still live\n## OPEN QUESTIONS FOR THE HUMAN\n1. Who decides?",
+      ["Claude"],
+    );
     expect(synthesis).toBe("1. Who decides?");
+    expect(verdicts[0]).toEqual({ advisor: "Claude", verdict: "open", note: "still live" });
+  });
+
+  it("tolerates a missing VERDICTS section with unspecified verdicts", () => {
+    const { verdicts, synthesis } = splitSynthOutput(
+      "## DISSENT\n- x\n## SYNTHESIS\ndone",
+      ["Claude", "GPT"],
+    );
+    expect(synthesis).toBe("done");
+    expect(verdicts.every((v) => v.verdict === "unspecified")).toBe(true);
   });
 
   it("preserves everything loudly when the format is violated", () => {
-    const { dissent, synthesis } = splitSynthOutput("Everyone basically agrees, great question!");
+    const { dissent, verdicts, synthesis } = splitSynthOutput(
+      "Everyone basically agrees, great question!",
+      ["Claude"],
+    );
     expect(dissent).toContain("SYNTHESIZER FORMAT FAILURE");
+    expect(verdicts).toEqual([{ advisor: "Claude", verdict: "unspecified" }]);
     expect(synthesis).toContain("Everyone basically agrees");
   });
 });
@@ -209,6 +243,7 @@ describe("conveneCouncil", () => {
       // medium tier -> synth is goog-high; google gets the advisor call then the synth call
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []), // no XAI key in ALL_KEYS -> Grok never seated
+      deepseek: fakeAdapter("deepseek", []),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -216,7 +251,10 @@ describe("conveneCouncil", () => {
     expect(adapters.google.calls).toHaveLength(2);
     expect(adapters.google.calls[1]).toContain("You are the synthesizer");
     expect(adapters.google.calls[1]).toContain("Never average");
-    expect(result.dissent).toContain("**binding**");
+    expect(adapters.google.calls[1]).toContain("## VERDICTS");
+    expect(result.dissent).toContain("binding");
+    expect(result.dissentAdjudicated).toBe(true);
+    expect(result.verdicts.map((v) => v.verdict)).toEqual(["adopt", "reject", "partial"]);
     expect(result.synthesis).toContain("Adopts");
 
     // 3 advisor calls (anthro-med, oai-med, goog-med) + 1 synth call (goog-high), all 1000in/500out
@@ -231,6 +269,7 @@ describe("conveneCouncil", () => {
       openai: fakeAdapter("openai", ["garbage", "garbage again"]),
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -250,10 +289,13 @@ describe("conveneCouncil", () => {
       openai: fakeAdapter("openai", [VALID_REPLY]),
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
     expect(result.capBreached).toBe(true);
+    expect(result.dissentAdjudicated).toBe(false);
+    expect(result.verdicts).toEqual([]);
     expect(result.outcomes.filter((o) => o.status === "ok")).toHaveLength(3); // positions kept
     expect(result.dissent).toContain("aborted");
     expect(result.synthesis).toContain("BUDGET CAP BREACHED");
@@ -267,6 +309,7 @@ describe("conveneCouncil", () => {
       openai: fakeAdapter("openai", [boom(), boom()]),
       google: fakeAdapter("google", [boom(), boom()]),
       xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 

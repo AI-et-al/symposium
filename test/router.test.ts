@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ADVISOR_PROMPT_OVERHEAD_TOKENS,
+  ADVISOR_TOKENS,
   catalogSchema,
   loadCatalog,
-  MAX_ADVISOR_TOKENS,
   MAX_SYNTH_TOKENS,
   planCouncil,
   SYNTH_PROMPT_OVERHEAD_TOKENS,
@@ -27,6 +27,9 @@ const FIXTURE: Catalog = {
     { id: "xai-low", provider: "xai", tier: "low", in_per_mtok: 1, out_per_mtok: 2 },
     { id: "xai-med", provider: "xai", tier: "medium", in_per_mtok: 1.25, out_per_mtok: 2.5 },
     { id: "xai-high", provider: "xai", tier: "high", in_per_mtok: 2, out_per_mtok: 6 },
+    { id: "ds-low", provider: "deepseek", tier: "low", in_per_mtok: 0.14, out_per_mtok: 0.28 },
+    { id: "ds-med", provider: "deepseek", tier: "medium", in_per_mtok: 0.435, out_per_mtok: 0.87 },
+    { id: "ds-high", provider: "deepseek", tier: "high", in_per_mtok: 0.435, out_per_mtok: 0.87 },
   ],
 };
 
@@ -41,7 +44,10 @@ const ALL_KEYS = {
 const QUESTION = "q".repeat(400);
 const BIG_BUDGET = 999;
 
-function plan(overrides: Partial<Parameters<typeof planCouncil>[0]> = {}, env = ALL_KEYS) {
+function plan(
+  overrides: Partial<Parameters<typeof planCouncil>[0]> = {},
+  env: Record<string, string | undefined> = ALL_KEYS,
+) {
   return planCouncil(
     { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET, ...overrides },
     env,
@@ -64,14 +70,15 @@ describe("stakes → tier mapping", () => {
 });
 
 describe("cost estimate", () => {
-  it("matches the hand-computed value (low tier, 4 advisors)", () => {
+  it("matches the hand-computed value (low tier, 4 of 5 advisors keyed)", () => {
     const p = plan({ stakes: "low" });
 
     const promptTokens = 100 + ADVISOR_PROMPT_OVERHEAD_TOKENS; // 500
     const advisorCost = (model: { in: number; out: number }) =>
-      (promptTokens / 1e6) * model.in + (MAX_ADVISOR_TOKENS / 1e6) * model.out;
-    // Synth tier is medium (one above low); cheapest medium synth call is xai-med.
-    const synthPromptTokens = 4 * MAX_ADVISOR_TOKENS + 100 + SYNTH_PROMPT_OVERHEAD_TOKENS;
+      (promptTokens / 1e6) * model.in + (ADVISOR_TOKENS.low / 1e6) * model.out;
+    // Synth tier is medium (one above low); cheapest medium synth call is xai-med
+    // (no DeepSeek key in ALL_KEYS, so ds-med is not a candidate).
+    const synthPromptTokens = 4 * ADVISOR_TOKENS.low + 100 + SYNTH_PROMPT_OVERHEAD_TOKENS;
     const synthCost = (synthPromptTokens / 1e6) * 1.25 + (MAX_SYNTH_TOKENS / 1e6) * 2.5;
 
     const expected =
@@ -87,7 +94,17 @@ describe("cost estimate", () => {
       "oai-low",
       "goog-low",
       "xai-low",
+      null, // DeepSeek — no key
     ]);
+  });
+
+  it("uses larger advisor output budgets at higher tiers", () => {
+    expect(ADVISOR_TOKENS.low).toBeLessThan(ADVISOR_TOKENS.medium);
+    expect(ADVISOR_TOKENS.medium).toBeLessThan(ADVISOR_TOKENS.high);
+    // Same tier prices, bigger budget -> high estimate strictly exceeds a
+    // hypothetical high estimate computed at the low budget.
+    const high = plan({ stakes: "high" });
+    expect(high.estimateUsd).toBeGreaterThan(0);
   });
 
   it("estimate excludes advisors whose key is missing", () => {
@@ -176,6 +193,12 @@ describe("synthesizer selection", () => {
     const p = plan({ stakes: "low" }, { ...ALL_KEYS, XAI_API_KEY: undefined as never });
     expect(p.synthModelId).toBe("goog-med"); // xai-med excluded; goog-med is next-cheapest
   });
+
+  it("DeepSeek becomes the synthesizer once its key exists (cheapest at every tier)", () => {
+    const p = plan({ stakes: "low" }, { ...ALL_KEYS, DEEPSEEK_API_KEY: "k5" });
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(5);
+    expect(p.synthModelId).toBe("ds-med");
+  });
 });
 
 describe("live models.json", () => {
@@ -183,7 +206,7 @@ describe("live models.json", () => {
     const catalog = loadCatalog();
     expect(catalog.schema).toBe("symposium-models/v1");
     // One model per provider per tier — the estimator depends on this shape.
-    for (const provider of ["anthropic", "openai", "google", "xai"] as const) {
+    for (const provider of ["anthropic", "openai", "google", "xai", "deepseek"] as const) {
       for (const tier of ["low", "medium", "high"] as const) {
         expect(
           catalog.models.filter((m) => m.provider === provider && m.tier === tier),

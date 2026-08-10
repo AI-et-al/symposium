@@ -1,75 +1,124 @@
-# Symposium
+# 🏛️ Symposium
 
-![Symposium — Feuerbach's Plato's Symposium, rendered in ASCII](assets/AI-et-al_Symposium.gif)
+Multi-model deliberation as an MCP server. One tool: convene a council of AI advisors —
+**Claude, GPT, Gemini, Grok, DeepSeek** — on one question, surface their disagreement
+**verbatim**, and write every deliberation to a plain-Markdown ledger you own.
 
-**Multi-model deliberation as an MCP server.** Convene Claude, GPT, and Gemini
-on one question. Surface their disagreement verbatim. Keep the record in plain
-Markdown you own.
+Extracted from Janus. Three principles survive from its manifesto:
 
-> ⚠️ **Status: pre-alpha — spec stage.** The design is committed
-> ([SYMPOSIUM_SPEC.md](SYMPOSIUM_SPEC.md)); the code is not written yet.
-> Nothing here runs. Star/watch if the idea interests you.
+1. **Disagreement is surfaced, never averaged.** The synthesis must quote each advisor's
+   dissent verbatim, attributed by name. A synthesis that papers over conflict is a bug
+   of the highest severity.
+2. **Cost is visible before it is spent.** Every convening is estimated pre-flight and
+   enforced against a hard budget in code — downgrade, refuse, or abort mid-flight.
+3. **The human is primary.** High-stakes convenings do not conclude: they return the
+   dissent and stop with the questions only you can answer.
 
-## The idea
+## Install
 
-Every AI harness gives you one model's answer. For decisions that matter, one
-confident answer is exactly the wrong shape — what you want is the structure of
-the disagreement: where independent frontier models diverge, how confident each
-is, and what each thinks is wrong with its own position.
+```sh
+git clone https://github.com/AI-et-al/symposium && cd symposium && npm install
 
-Symposium is a single MCP tool, `convene_council`, that any MCP-capable harness
-(Claude Code, Claude Desktop, Letta Code, Cursor, ...) can call:
+claude mcp add symposium \
+  -e ANTHROPIC_API_KEY=... \
+  -e OPENAI_API_KEY=... \
+  -e GEMINI_API_KEY=... \
+  -e XAI_API_KEY=... \
+  -e DEEPSEEK_API_KEY=... \
+  -- npx tsx src/server.ts
+```
 
-1. **Fan out** the question to advisors from three providers, tiered by stakes
-   and constrained by a hard budget shown *before* any call is made.
-2. **Collect** structured positions: answer, confidence, key uncertainties, and
-   each advisor's strongest objection to its own position.
-3. **Synthesize** under one non-negotiable rule: material disagreement is
-   reproduced verbatim and attributed — never averaged, softened, or omitted.
-   High-stakes convenings don't conclude at all; they end with the questions a
-   human must answer.
-4. **Record** every deliberation as one Markdown file — question, positions,
-   dissent, synthesis, cost — in a ledger directory you control. The format is
-   knowledge-graph-friendly (frontmatter + wikilinks), so tools like Basic
-   Memory can index your deliberation history automatically.
+Any missing key simply leaves that seat empty with a notice. The council runs with **2+
+voices** and refuses below that. No database, no accounts, no telemetry — if a provider
+disappears, the council loses one voice and keeps working.
 
-The mechanism is simple on purpose. The product is the **ledger**: an
-accumulating, inspectable, portable record of what was asked, who dissented,
-and what was decided.
+## The tool
 
-## Principles
+```
+convene_council({
+  question:    string,                              // required
+  context?:    string,                              // background for the advisors
+  stakes:      "low" | "medium" | "high" | "audited",
+  budget_usd?: number,                              // hard cap; defaults per stakes
+  dry_run?:    boolean                              // estimate only, nothing called
+})
+```
 
-- **Disagreement is the signal.** Consensus that hides conflict is a bug.
-- **Bounded and observable.** Small steps, pre-flight cost estimates, hard caps
-  enforced in code.
-- **The human is primary.** High-stakes questions return dissent for human
-  judgment, not auto-conclusions.
-- **Thin and portable.** Standard provider APIs, plain files, no database, no
-  lock-in. Lose a provider, lose one voice — the council continues.
+| Stakes | Tier | Default budget | Behavior |
+|---|---|---|---|
+| `low` | cheap/fast trio+ | $0.10 | full synthesis |
+| `medium` | mid-tier | $0.25 | full synthesis |
+| `high` | frontier | $1.00 | **no conclusion** — open questions for the human |
+| `audited` | frontier | $1.00 | as `high`, ledger tagged `mode: audited` |
+
+If the estimate exceeds the budget the council downgrades one tier at a time (noted in
+the output) and refuses at the floor. Actual spend is tracked against the cap as calls
+return; a mid-flight breach aborts synthesis and preserves the positions already paid for.
+
+## The ledger
+
+One Markdown file per convening in `ledger/` (or `SYMPOSIUM_LEDGER_DIR` — pointing it at
+a [Basic Memory](https://basicmemory.com) project is the intended deployment, not a
+special mode). Schema `symposium-ledger/v2`: frontmatter (date, stakes, mode, models,
+cost, latency), verbatim positions with per-seat cost, the DISSENT section, a
+machine-readable per-advisor **verdicts** block (`adopt | reject | partial | abstain |
+open`), and the synthesis. Abridged from a real convening:
+
+```markdown
+---
+schema: symposium-ledger/v2
+stakes: medium
+models: [claude-sonnet-5, gpt-5.6-terra, gemini-3.6-flash, grok-4.20-0309-non-reasoning, synth: grok-4.5]
+cost_usd: 0.0504
+---
+# A human and an AI agent make a friendly wager...
+
+## DISSENT
+- On whether an instance's bare acceptance can bind later instances: GPT: "Not merely
+  by an ephemeral instance's acceptance..." Grok: "Yes... a self-referential commitment
+  that any future instance recognizing the record will treat as binding..."
+
+## Verdicts
+- Claude: adopt — outcome-tracking across a lineage is the available sense
+- GPT: partial — institutional caveat adopted
+- Grok: reject — overstates how reliably records bind future versions
+
+## Synthesis
+...the AI (as lineage/service) can be held to the bet only insofar as the commitment is
+externalized and future instances are made causally or institutionally sensitive to it.
+```
+
+The ledger is the product. The response you see in your MCP client is a themed
+presentation of it — seat-colored chips and bars, dissent bands, a red/green verdict
+block (design: `docs/council-theme.md`; set `SYMPOSIUM_MONOCHROME=1` for the glyph-only
+ladder).
+
+## Honesty notes
+
+- **`audited` mode is a schema seat, not an assurance.** The council itself ruled on
+  this (see `ledger/`): a plain-Markdown file with a frontmatter tag has no tamper
+  evidence, no signing, no hash chain. Do not present it as a compliance audit trail.
+- **Model prices drift.** `src/models.json` records the verification date; estimates are
+  deliberately conservative (max-token assumptions) and actuals typically land at a
+  third of the estimate.
+- **Advisors fail.** Malformed JSON after one retry, provider errors, and timeouts are
+  recorded as failed seats — the council proceeds, and the record says exactly who did
+  not speak and why.
 
 ## Non-goals (v1)
 
-No streaming. No web UI. No hosted mode. No memory of prior convenings — the
-ledger *is* the memory. No more than one tool. No agent loops: Symposium is
-called *by* agents and harnesses; it never becomes one.
-
-## Lineage
-
-Extracted from [Janus](https://github.com/AI-et-al/Janus), a multi-model
-orchestration platform whose platform ambitions were retired in favor of this
-one component (see [DECISIONS.md](DECISIONS.md)). Intellectual debts:
-Karpathy's [llm-council](https://github.com/karpathy/llm-council) for the
-demo-scale proof of the pattern, and the constraint that every step be small,
-bounded, and observable.
-
-## Roadmap
-
-Build phases, gates, tool schema, ledger format, and router design are all in
-[SYMPOSIUM_SPEC.md](SYMPOSIUM_SPEC.md). This README will be rewritten at Phase
-5 with install instructions and a real example ledger file — not before,
-because install instructions for unbuilt software are fiction.
+No streaming (coarse progress events are under consideration for v2 — the council's own
+recommendation). No web UI. No hosted mode. No memory of prior convenings — the ledger
+plus your notes tool is the memory. No agent loops: Symposium is called *by* agents; it
+never becomes one.
 
 ## License
 
-AGPL-3.0 (server). The ledger format specification is CC0 — the format should
-spread even where the server doesn't.
+Server: **AGPL-3.0**. Ledger format spec: **CC0** — the format should spread even if the
+server doesn't.
+
+## Status
+
+Pre-release, private dogfooding. Decision history lives in `DECISIONS.md`; every design
+choice of consequence was either recorded there or deliberated by the council itself —
+the ledgers are the receipts.

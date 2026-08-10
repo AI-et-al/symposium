@@ -104,6 +104,40 @@ secret sweep clean. Two findings worth acting on later:
 Stakes/tier decoupling, the downgrade note, the high-stakes stop-for-human path, and
 mid-flight cost accounting all behaved to spec in production.
 
+## 2026-08-10 — v0.6.0: council v2 (verdicts, per-tier budgets, DeepSeek, theme, README)
+
+Dan's directive: "proceed with your recommended fixes across all areas." Shipped together:
+
+- **Per-tier advisor token budgets** — `ADVISOR_TOKENS` low 1024 / medium 2048 / high
+  4096, replacing the flat 1024. Fixes the P4 gate finding (frontier models spend output
+  tokens on reasoning we can't disable and truncate the JSON contract). Estimates scale
+  accordingly.
+- **Ledger schema v2** — implements the council's own 2026-08-10 recommendation: a
+  required machine-readable `## Verdicts` block (adopt/reject/partial/abstain/open, one
+  line per advisor, structured block authoritative for rendering, prose stays narrative),
+  plus per-seat cost in positions. The synthesis prompt now specifies the three-section
+  shape (DISSENT topics with attributed blockquotes, VERDICTS lines, SYNTHESIS/OPEN
+  QUESTIONS); parsing is tolerant — a missing VERDICTS section degrades to `unspecified`,
+  never a failure.
+- **DeepSeek seated as the fifth voice** — per the council's unanimous choice and its
+  native-adapter-first synthesis. Catalog verified 2026-08-10 (deepseek.ai/pricing,
+  benchlm.ai, openrouter.ai): `deepseek-v4-flash` $0.14/$0.28 (low), `deepseek-v4-pro`
+  $0.435/$0.87 (medium AND high — two tiers, one model; DeepSeek ships two models).
+  OpenAI-compatible at api.deepseek.com via the existing SDK; env `DEEPSEEK_API_KEY`
+  (seat skips until a key exists). Side effect: DeepSeek's pricing makes it the default
+  synthesizer at every tier once keyed. OpenRouter trial channel remains the next step
+  for seats 6+ per the staged-admission policy.
+- **Themed response (the chamber)** — the response text now renders per
+  `docs/council-theme.md`: seat chips (🟠🟢🔵⚫🟣) on every mention, seat-colored
+  confidence bars, dissent bands, a red/green ```diff verdict block, degraded-council
+  and NOT-ADJUDICATED states, and a budget meter. Deviation from spec §2's numbered
+  return format — the ledger remains the structured record; the response is
+  presentation. Chips are applied to dissent attribution lines only, never inside
+  quoted bodies (one seat's words must not carry another seat's color).
+  `SYMPOSIUM_MONOCHROME=1` degrades to the glyph ladder.
+- **README written** — last, per spec §5 P5, with the audited-mode honesty note the
+  council's own verdict demanded.
+
 ## 2026-08-06 — Deferred: Oracle (steipete/oracle) as a fourth council member
 
 Dan asked whether adding Oracle as a council voice is expensive. Mechanically no — the

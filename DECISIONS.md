@@ -84,6 +84,26 @@ Janus impulse). The council is now four voices — Claude, GPT, Gemini, Grok —
   historical ledger entry containing OpenAI's own masked fragment of an already-rotated
   key was scrubbed in place.
 
+## 2026-08-10 — Phase 4 gate observations (ten assorted convenings)
+
+Ten real convenings across all four stakes levels, ~$0.44 total, every ledger written,
+secret sweep clean. Two findings worth acting on later:
+
+- **High-tier advisors malform more.** Gemini 3.1 Pro malformed in two convenings and
+  Claude Opus 5 in one — frontier models (especially Gemini, which we cannot easily
+  de-think) burn advisor output budget on reasoning and truncate the JSON contract at
+  1024 tokens. The contract's malformed-handling absorbed every case gracefully, but
+  raising `MAX_ADVISOR_TOKENS` for the high tier (or per-model output floors) is the
+  obvious P5/v2 fix. Low/medium tiers malformed zero times across the ten.
+- **The council itself says `audited` mode overstates assurance.** The audited-stakes
+  convening on audit-trail sufficiency returned a two-voice verdict that a plain-Markdown
+  ledger with a frontmatter tag is not an audit trail (no tamper evidence, no signing,
+  no hash chain). v2 candidates: hash-chained entries, per-seat cost in frontmatter,
+  signed ledgers. Until then the README must not oversell `audited`.
+
+Stakes/tier decoupling, the downgrade note, the high-stakes stop-for-human path, and
+mid-flight cost accounting all behaved to spec in production.
+
 ## 2026-08-06 — Deferred: Oracle (steipete/oracle) as a fourth council member
 
 Dan asked whether adding Oracle as a council voice is expensive. Mechanically no — the

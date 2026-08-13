@@ -93,6 +93,11 @@ presentation of it — seat-colored chips and bars, dissent bands, a red/green v
 block (design: `docs/council-theme.md`; set `SYMPOSIUM_MONOCHROME=1` for the glyph-only
 ladder).
 
+The format is specified standalone in [`spec/symposium-ledger.md`](spec/symposium-ledger.md)
+(CC0), with four real, unedited specimen ledgers in [`spec/specimens/`](spec/specimens/) —
+including the council refusing to bless this repo's own `audited` mode, and the convening
+that set this project's roadmap. Implement the format without asking; that's what CC0 is for.
+
 ## Honesty notes
 
 - **`audited` mode is a schema seat, not an assurance.** The council itself ruled on

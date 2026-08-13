@@ -159,3 +159,57 @@ Deferred anyway, for spec reasons, not effort:
 MCP clients launch stdio servers from arbitrary working directories. Defaulting the
 ledger dir to `<package root>/ledger` (via `import.meta.url`) keeps writes predictable
 no matter where the client was started; `SYMPOSIUM_LEDGER_DIR` still overrides.
+
+## 2026-08-12 — The post-oracle pivot: retained seats, and the wave plan
+
+Dan's directive: "do exactly what Peter does that allows him to offer oracle to as
+wide an audience as it does." The arc of the deliberation, recorded because it
+reversed twice before landing:
+
+1. **Oracle-as-engine considered** — shell out to `@steipete/oracle` for
+   ChatGPT/Gemini seats via browser-session auth (his infra as our means; his npm/npx
+   distribution as the model). Approved, then **rejected** on reflection: it bets the
+   audience story on a ToS-gray scraping arbitrage one provider decision away from
+   closing, and imports a single maintainer's side project as a load-bearing wall.
+2. **What survived from "what Peter does":** the *bet*, not the trench coat — that
+   everyone's existing subscription is the distribution channel. The industry
+   confirmed the bet in the interim (Steinberger hired by OpenAI 2026-02-14;
+   OpenClaw to a foundation; every major provider now ships a
+   subscription-authenticated scriptable CLI).
+3. **v0.7 direction adopted: retained seats.** Council seats held by official CLIs —
+   `claude -p`, `codex exec`, `gemini` — invoked as subprocesses in answer-only mode
+   (no tools, no file access), no API billing (NOT "zero marginal cost" — see council
+   correction below), on a new flat tier in the router. Seat provenance
+   (`retained` = subscription CLI carrying its human's context, informed-but-
+   interested counsel; `neutral` = cold API seat) enters the ledger schema in v3.
+   Spec principle 4 will be amended from "no plan-auth tricks" to "first-party auth
+   only, no scraping" when v0.7 lands. Oracle remains possible later behind the same
+   subprocess abstraction; nothing depends on it.
+
+The strategy itself was put to the council (medium stakes, $0.1020, 3 of 5 voices —
+the ledger is `ledger/2026-08-12-2014-…` and now also specimen 1 in `spec/`). Its
+sequencing, adopted: **Motion 1** spec + essay as one artifact; **Motion 2** v0.7
+retained seats + npm one-line install; **Motion 3** OpenClaw skill, last, only
+carrying a citable norm and a hardened secrets story into that trust-crisis
+marketplace. Framing corrections adopted from the council, verbatim in the ledger:
+"zero marginal cost" is economically misleading (quotas, ToS, opportunity cost);
+retained seats are informed-but-interested counsel, not inferior jurors — provenance
+discloses, it does not rank; a solo project cannot declare "THE standard," only earn
+focal-point status; verbatim ledgers need a redaction/retention posture (open area,
+noted in spec). Also adopted, from Claude's dissent-from-framing: optimize for norm
+success over project survival — absorption of the format without attribution counts
+as success. CC0 was chosen for exactly this, before we knew it.
+
+## 2026-08-12 — Motion 1 executed: ledger spec extracted, specimens, essay
+
+- `spec/symposium-ledger.md` — the v2 format as `ledger.ts` actually writes it,
+  CC0, with a six-bullet conformance floor for other implementations, honesty
+  constraints (not an audit trail; redaction unspecified), and v3 directions
+  (seat provenance, redaction markers). Nothing in the spec is aspirational except
+  the clearly-marked v3 section.
+- `spec/specimens/` — four real convenings, copied unedited from `ledger/` (which
+  stays gitignored; specimens are deliberate publications, reviewed before copying):
+  the strategy convening (v2, degraded council), the wager (v1), the audited-mode
+  ruling (v1, high-stakes non-conclusion), the morning question (v1, $0.0077 floor).
+- `essays/your-ai-represents-you.md` — draft in Dan's voice, centerpiece is the
+  strategy ledger; publishes nothing until Dan says so.

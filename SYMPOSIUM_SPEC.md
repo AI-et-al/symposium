@@ -5,7 +5,7 @@ Core thesis: convene Claude, GPT, and Gemini on one question; surface disagreeme
 verbatim; write every deliberation to a plain-Markdown ledger the operator owns.
 
 This document is a complete, self-sufficient build spec. It is written to be handed
-to Claude Code as the primary instruction file. Human (Dan) reviews at each phase gate.
+to Claude Code as the primary instruction file. The human operator reviews at each phase gate.
 
 ---
 

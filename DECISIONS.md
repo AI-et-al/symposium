@@ -26,7 +26,7 @@ Dev (exact pins): `typescript` 7.0.2, `tsx` 4.23.9, `vitest` 4.1.10 (per spec §
 
 ## 2026-08-06 — Phase 2 (router): design decisions
 
-- **`dry_run` tool param** — deviation from spec §2's fixed schema, approved by Dan. The P2 gate's "dry-run flag" lives on the tool (`dry_run?: boolean`) so MCP callers can preview an estimate per-call; env-var and CLI-only alternatives were rejected as unreachable from the tool surface.
+- **`dry_run` tool param** — deviation from spec §2's fixed schema, approved by the operator. The P2 gate's "dry-run flag" lives on the tool (`dry_run?: boolean`) so MCP callers can preview an estimate per-call; env-var and CLI-only alternatives were rejected as unreachable from the tool surface.
 - **Synth top-tier clamp** — spec §2 puts the synthesizer one tier above the advisors; at `high` there is no tier above, so the synthesizer is the cheapest `high`-tier model (cheapest by estimated synthesis-call cost, not raw per-token price).
 - **Synth requires an available key** — synthesizer candidates are restricted to providers whose API key is set; a synth model we cannot call is not a candidate.
 - **Default budget caps** — low $0.05, medium $0.25, high/audited $1.00; explicit `budget_usd` always wins as the hard cap.
@@ -51,7 +51,7 @@ budget rises $0.05 → $0.10 so the floor tier still clears its own estimate.
 
 ## 2026-08-06 — Grok seated as the fourth council voice (spec §2 amended)
 
-Dan's direction: extensibility was the point ("making sure I could add more models" — the
+The operator's direction: extensibility was the point ("making sure I could add more models" — the
 Janus impulse). The council is now four voices — Claude, GPT, Gemini, Grok — and the spec's
 "three-model" phrasing is amended to N-voice with the ≥2 rule unchanged.
 
@@ -106,7 +106,7 @@ mid-flight cost accounting all behaved to spec in production.
 
 ## 2026-08-10 — v0.6.0: council v2 (verdicts, per-tier budgets, DeepSeek, theme, README)
 
-Dan's directive: "proceed with your recommended fixes across all areas." Shipped together:
+The operator's directive: "proceed with your recommended fixes across all areas." Shipped together:
 
 - **Per-tier advisor token budgets** — `ADVISOR_TOKENS` low 1024 / medium 2048 / high
   4096, replacing the flat 1024. Fixes the P4 gate finding (frontier models spend output
@@ -140,7 +140,7 @@ Dan's directive: "proceed with your recommended fixes across all areas." Shipped
 
 ## 2026-08-06 — Deferred: Oracle (steipete/oracle) as a fourth council member
 
-Dan asked whether adding Oracle as a council voice is expensive. Mechanically no — the
+The operator asked whether adding Oracle as a council voice is expensive. Mechanically no — the
 `ProviderAdapter` interface makes any new voice one adapter + four registration touch
 points (Provider union, catalog schema, ADVISORS availability row, DEFAULT_ADAPTERS).
 Deferred anyway, for spec reasons, not effort:
@@ -162,7 +162,7 @@ no matter where the client was started; `SYMPOSIUM_LEDGER_DIR` still overrides.
 
 ## 2026-08-12 — The post-oracle pivot: retained seats, and the wave plan
 
-Dan's directive: "do exactly what Peter does that allows him to offer oracle to as
+The operator's directive: "do exactly what Peter does that allows him to offer oracle to as
 wide an audience as it does." The arc of the deliberation, recorded because it
 reversed twice before landing:
 
@@ -260,7 +260,7 @@ Design decisions, in the order they bit:
   dist), `files` allowlist ships dist/src/spec/docs only — no essays (unpublished
   by rule), no ledger records, no .env; verified via `npm pack --dry-run`.
   `prepublishOnly` gates on typecheck+tests. Remaining before `npm publish`, per
-  the 2026-08-10 npm convening: Dan's sign-off, and the "did the tool change a
+  the 2026-08-10 npm convening: the operator's sign-off, and the "did the tool change a
   real decision" question that convening said gates announcement.
 
 ## 2026-08-15 — v0.7 gate: retained-only council convened, one manifesto-class bug found
@@ -324,5 +324,5 @@ record of its own deliberation marks its own seat's provenance.
   stays gitignored; specimens are deliberate publications, reviewed before copying):
   the strategy convening (v2, degraded council), the wager (v1), the audited-mode
   ruling (v1, high-stakes non-conclusion), the morning question (v1, $0.0077 floor).
-- `essays/your-ai-represents-you.md` — draft in Dan's voice, centerpiece is the
-  strategy ledger; publishes nothing until Dan says so.
+- `essays/your-ai-represents-you.md` — draft in the operator's voice, centerpiece is the
+  strategy ledger; publishes nothing until the operator says so.

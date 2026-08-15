@@ -408,3 +408,36 @@ describe("retained seats", () => {
     ]);
   });
 });
+
+describe("retained-only council (no neutral synthesizer)", () => {
+  it("preserves positions and says the synthesizer was unavailable — never 'every advisor failed'", async () => {
+    const env = { SYMPOSIUM_RETAINED_SEATS: "claude,codex" };
+    const plan = planCouncil(
+      { question: "Q?", stakes: "medium", budget_usd: 999 },
+      env,
+      FIXTURE,
+      { claude: true, codex: true },
+    );
+    expect(plan.refusal).toBeUndefined();
+    expect(plan.synthModelId).toBeNull(); // no keyed provider -> no neutral synth
+
+    const adapters = {
+      anthropic: fakeAdapter("anthropic", []),
+      openai: fakeAdapter("openai", []),
+      google: fakeAdapter("google", []),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
+      "claude-cli": fakeAdapter("claude-cli", [VALID_REPLY]),
+      "codex-cli": fakeAdapter("codex-cli", [VALID_REPLY]),
+    };
+    const result = await conveneCouncil({ question: "Q?", stakes: "medium" }, plan, FIXTURE, adapters);
+
+    expect(result.outcomes.map((o) => o.status)).toEqual(["ok", "ok"]);
+    expect(result.dissentAdjudicated).toBe(false);
+    expect(result.dissent).toContain("No synthesizer was available");
+    expect(result.dissent).not.toContain("every advisor failed");
+    expect(result.synthesis).toContain("the reader is the synthesizer");
+    expect(result.totalCostUsd).toBe(0);
+  });
+});

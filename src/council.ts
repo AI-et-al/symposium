@@ -418,9 +418,17 @@ export async function conveneCouncil(
   let dissentAdjudicated = false;
 
   const okCount = outcomes.filter((o) => o.status === "ok").length;
-  if (okCount === 0 || !plan.synthModelId) {
+  if (okCount === 0) {
     dissent = "*No positions returned — every advisor failed; nothing to dissent from.*";
     synthesis = "No synthesis possible: the council returned no valid positions.";
+  } else if (!plan.synthModelId) {
+    // Reachable since v0.7: a retained-only council has positions but no neutral
+    // synthesizer (retained seats do not adjudicate). The record must say who spoke.
+    dissent = "*No synthesizer was available — no neutral API seat holds a key; dissent not adjudicated.*";
+    synthesis =
+      "No synthesis: the council convened without a neutral synthesizer (retained seats " +
+      "do not adjudicate dissent in v0.7). The positions above are preserved verbatim; " +
+      "the reader is the synthesizer.";
   } else if (cap.spentUsd >= cap.capUsd) {
     // Hard cap enforced against ACTUAL usage (spec §3): advisors already returned are
     // kept and recorded; the remaining call (synthesis) is aborted.

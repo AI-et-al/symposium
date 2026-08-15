@@ -50,8 +50,14 @@ telemetry — if a provider disappears, the council loses one voice and keeps wo
 > each seated voice's upstream must be on the allowlist or its calls 404 — recorded
 > honestly as a failed seat, but avoidable.
 
-Once published to npm (pending the release-gate checklist in `DECISIONS.md`), the
-server will also run as `npx -y symposium` — the package is already built for it.
+Or skip the clone entirely once you have keys in hand — the package publishes as
+[`symposium-mcp`](https://www.npmjs.com/package/symposium-mcp) (plain `symposium`
+was already taken on the registry; the server and its one tool keep their name):
+
+```sh
+claude mcp add symposium -e OPENROUTER_API_KEY=... -- npx -y symposium-mcp
+```
+
 Long convenings report **coarse progress** (each seat as it speaks, synthesis, the
 ledger write) to MCP clients that request it; the result and the ledger stay atomic.
 

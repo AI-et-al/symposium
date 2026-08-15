@@ -1,7 +1,27 @@
 {
-  "name": "symposium",
+  "name": "symposium-mcp",
   "version": "0.8.0",
-  "description": "Multi-model deliberation as an MCP server. Convene Claude, GPT, Gemini, Grok, and DeepSeek — plus retained seats held by your own subscription CLIs — on one question; surface disagreement verbatim; write every deliberation to a plain-Markdown ledger you own.",
+  "description": "Multi-model deliberation as an MCP server. Convene Claude, GPT, Gemini, Grok, DeepSeek, and Qwen — plus retained seats held by your own subscription CLIs — on one question; surface disagreement verbatim; write every deliberation to a plain-Markdown ledger you own.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "modelcontextprotocol",
+    "llm",
+    "council",
+    "deliberation",
+    "multi-model",
+    "dissent",
+    "decision-records",
+    "ensemble"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AI-et-al/symposium.git"
+  },
+  "homepage": "https://github.com/AI-et-al/symposium#readme",
+  "bugs": {
+    "url": "https://github.com/AI-et-al/symposium/issues"
+  },
   "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {

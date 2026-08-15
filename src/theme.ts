@@ -15,7 +15,9 @@ export const SEAT: Record<AdvisorName, { chip: string; fill: string }> = {
   Gemini: { chip: "🔵", fill: "🟦" },
   Grok: { chip: "⚫", fill: "⬛" },
   DeepSeek: { chip: "🟣", fill: "🟪" },
-  Qwen: { chip: "🔴", fill: "🟥" },
+  // Yellow, not red: 🟥 is the budget meter's breach fill and red is never decoration —
+  // a confident Qwen bar must not read as a blown budget (docs/council-theme.md).
+  Qwen: { chip: "🟡", fill: "🟨" },
   "Claude Code": { chip: "🧡", fill: "🟧" },
   Codex: { chip: "💚", fill: "🟩" },
   "Gemini CLI": { chip: "💙", fill: "🟦" },

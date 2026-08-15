@@ -28,7 +28,6 @@
     "@anthropic-ai/sdk": "0.115.0",
     "@google/genai": "2.16.0",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@openrouter/sdk": "^1.2.37",
     "openai": "7.4.0",
     "zod": "4.4.3"
   },
@@ -37,8 +36,5 @@
     "tsx": "4.23.9",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
-  },
-  "allowScripts": {
-    "@openrouter/sdk@1.2.37": true
   }
 }

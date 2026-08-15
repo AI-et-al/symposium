@@ -17,6 +17,7 @@ wrong.
 | Gemini | 🔵 | 🟦 | Google blue |
 | Grok | ⚫ | ⬛ | xAI monochrome |
 | DeepSeek | 🟣 | 🟪 | DeepSeek violet |
+| Qwen | 🟡 | 🟨 | Qwen yellow (red is reserved for a breached budget) |
 | Claude Code | 🧡 | 🟧 | Anthropic terracotta, retained |
 | Codex | 💚 | 🟩 | OpenAI green, retained |
 | Gemini CLI | 💙 | 🟦 | Google blue, retained |

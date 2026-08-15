@@ -351,6 +351,8 @@ DeepSeek account is funded: the planner still selects DeepSeek as synthesizer
   `qwen/qwen3.7-max` $1.475/$4.425 (high). Qwen 3.8 exists but ships no flash/plus
   tiers yet; `qwen3.6-max-preview` carries a preview tag. The catalog-wide
   `verified` date stays 2026-08-10 — only the Qwen rows were checked today.
-- **Seat** — advisor name "Qwen", neutral provenance, chip 🔴/🟥. OpenRouter model
-  ids keep their `qwen/` slug prefix in the catalog and ledgers: the id names what
-  is billed, and OpenRouter is what bills.
+- **Seat** — advisor name "Qwen", neutral provenance, chip 🟡/🟨 (originally 🔴/🟥,
+  corrected same day: the theme reserves red for a breached budget — "red is never
+  decoration" — and a ten-cell confident Qwen bar was visually identical to the
+  breach meter). OpenRouter model ids keep their `qwen/` slug prefix in the catalog
+  and ledgers: the id names what is billed, and OpenRouter is what bills.

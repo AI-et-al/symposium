@@ -18,12 +18,17 @@ Extracted from Janus. Three principles survive from its manifesto:
 **Kin and credit.** The spec's second principle is named the *Karpathy constraint*
 (every step small, bounded, observable; cost shown before it is spent), and Andrej
 Karpathy's [llm-council](https://github.com/karpathy/llm-council) explored the same
-instinct — several models on one question, a chairman synthesizing. Janus, this
-project's parent, was underway before llm-council appeared; the convergence reads to
-us as evidence the shape is right, and the influence and our gratitude are
-acknowledged gladly. Where Symposium differs is the point of emphasis: dissent
-preserved verbatim as the product, a ledger file the human owns, and budgets enforced
-in code.
+instinct — several models on one question, a designated Chairman compiling the
+answers. We examined it directly before shipping this note (2026-08-15): the
+resemblance is the silhouette; the mechanisms differ at the core. llm-council's
+models review and *rank each other's anonymized answers*, and its Chairman compiles
+one best answer — it optimizes for the answer. Symposium's advisors answer
+independently and never see each other; the synthesis must preserve their
+disagreement verbatim, and at high stakes there is deliberately no answer at all —
+it optimizes for the record, with budgets enforced in code and a ledger file the
+human owns. Janus, this project's parent, was underway before llm-council appeared;
+the convergence reads to us as evidence the shape is right, and the influence and
+our gratitude are acknowledged gladly.
 
 ## Install
 

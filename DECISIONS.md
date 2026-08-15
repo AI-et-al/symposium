@@ -327,6 +327,30 @@ record of its own deliberation marks its own seat's provenance.
 - `essays/your-ai-represents-you.md` — draft in the operator's voice, centerpiece is the
   strategy ledger; publishes nothing until the operator says so.
 
+## 2026-08-15 — llm-council examined directly; the kin-and-credit note grounded in observation
+
+The operator asked whether we had ever directly observed what karpathy/llm-council
+does, or only credited it from prior model knowledge. We had not — a violation in
+spirit of our own verify-against-live-sources rule. Examined 2026-08-15 (README on
+`master`, ~24k stars): a local FastAPI/React web app, OpenRouter-only, three
+stages — (1) all models answer individually; (2) each model reviews the others'
+**anonymized** answers and ranks them by accuracy and insight; (3) a designated
+Chairman "compiles them into a single final answer." Conversations stored as local
+JSON. No license file, no cost tracking, no stakes, no record format, no MCP.
+Karpathy's own framing: "99% vibe coded as a fun Saturday hack," unsupported,
+provided for inspiration.
+
+Conclusion, now on the record: not a spinoff relationship in either direction. The
+silhouette converges (council, chairman, OpenRouter); the mechanisms are opposite
+at the core — llm-council's models cross-examine and its pipeline optimizes for one
+best answer; Symposium's advisors answer blind and its pipeline optimizes for the
+preserved record, refusing to answer at high stakes. The README credit paragraph
+was tightened to say exactly this instead of gesturing at "emphasis." One idea
+noted as genuinely theirs and absent here: the anonymized peer-review stage.
+Whether advisors should ever see each other's positions is a real future convening,
+and it would need to answer the manifesto first (cross-examination pressures
+positions toward consensus — the exact failure Symposium exists to resist).
+
 ## 2026-08-15 — v0.8.0: the adoption council's gates, executed
 
 The adoption convening (ledger `2026-08-15-1524-…`) ruled niche-yes/mass-no and

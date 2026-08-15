@@ -263,6 +263,56 @@ Design decisions, in the order they bit:
   the 2026-08-10 npm convening: Dan's sign-off, and the "did the tool change a
   real decision" question that convening said gates announcement.
 
+## 2026-08-15 — v0.7 gate: retained-only council convened, one manifesto-class bug found
+
+The gate convening was a council of retained counsel alone — Claude Code and Codex,
+no API keys, quorum 2, $0.0000 — on a real pending decision (Motion 3's design).
+Both seats spoke; the machinery held: v3 provenance throughout, unmetered seats,
+36s wall-clock, `retained:` frontmatter. Two findings:
+
+- **Bug, fixed same hour:** with positions but no neutral synthesizer, the DISSENT
+  section claimed "every advisor failed" while two seats had spoken — a record
+  lying about who spoke. Unreachable before v0.7 (no synth implied no quorum);
+  reachable the moment a retained-only council existed, and hit on the first live
+  run. The state now says: no synthesizer available, positions preserved, the
+  reader is the synthesizer. Regression-tested. Both ledgers kept — the flawed
+  record is the receipt of the find (`ledger/2026-08-15-1509-…`), the clean one
+  the gate record (`ledger/2026-08-15-1511-…`).
+- **Retained context is visible in the record, as designed:** Codex's position
+  says "Operator-specific knowledge reinforces this judgment"; Claude Code's
+  discloses "my retained context has no Symposium-specific record." The
+  provenance norm is doing its work — the reader can see which counsel is
+  interested, and how.
+
+## 2026-08-15 — Motion 3 executed: OpenClaw skill, format-first, per the retained council's own ruling
+
+The design question — teach agents to *write* conformant records (format-first) or
+to *call* `convene_council` (tool-first) — was put to the v0.7 retained council.
+Both seats ruled format-first, decisively (0.86 / 0.94), on three converging
+grounds: the norm-over-survival precedent makes the CC0 record the payload, not
+the AGPL server; in a marketplace where 7.1% of skills mishandle secrets, **a
+skill that requires zero credentials is the hardened secrets story** — nothing to
+leak, nothing to phish; and tool-first would quietly amend an adopted motion.
+Adopted from the seats' own refinements: the tool appears only as an optional,
+capability-detected escalation with keys never assumed; the skill embeds a
+deterministic conformance checklist so native records don't drift; redaction
+rules and a refusal-to-embed-secrets clause ride along; and an agent writing a
+record of its own deliberation marks its own seat's provenance.
+
+- `skills/deliberation-records/SKILL.md` — Agent Skills format (OpenClaw-
+  compatible), self-contained, zero credentials, zero network, zero binaries.
+  **CC0**, same logic as Motion 1: the skill is a vehicle for the format, and the
+  format should spread even if the server doesn't.
+- Publication to ClawHub is an outward-facing act and remains the operator's,
+  same rule as npm publish and the essay. The artifact is ready; the receipts
+  are the two 2026-08-15 ledgers.
+- Honest limit, recorded: both seats flagged the same open risk — natively
+  written records can be *format*-conformant while "ledger-washing" a
+  single-model answer into deliberation costume. The skill's checklist requires
+  naming every seat and its outcome, which makes a one-voice record visibly a
+  one-voice record; deeper authenticity guarantees are a future-spec problem,
+  not a skill problem.
+
 ## 2026-08-12 — Motion 1 executed: ledger spec extracted, specimens, essay
 
 - `spec/symposium-ledger.md` — the v2 format as `ledger.ts` actually writes it,

@@ -142,6 +142,11 @@ The format is specified standalone in [`spec/symposium-ledger.md`](spec/symposiu
 including the council refusing to bless this repo's own `audited` mode, and the convening
 that set this project's roadmap. Implement the format without asking; that's what CC0 is for.
 
+For agents outside MCP entirely, [`skills/deliberation-records/`](skills/deliberation-records/SKILL.md)
+is a CC0 Agent Skill (OpenClaw-compatible) that teaches any agent to write conformant
+records natively — no server, no credentials, no network. Its design was itself put to
+the council; a retained-only council ruled format-first, and the ledgers are the receipts.
+
 ## Honesty notes
 
 - **`audited` mode is a schema seat, not an assurance.** The council itself ruled on

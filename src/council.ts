@@ -69,6 +69,10 @@ export interface CouncilResult {
   capBreached: boolean;
   /** False when no synthesizer completed — the dissent body is a marker, not an adjudication. */
   dissentAdjudicated: boolean;
+  /** The synthesizer that actually adjudicated (may be a fallback); null when none did. */
+  synthModelId: string | null;
+  /** Present when the elected synthesizer failed and a fallback adjudicated instead. */
+  synthNote?: string;
 }
 
 export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
@@ -418,6 +422,8 @@ export async function conveneCouncil(
   let synthCostUsd = 0;
   let capBreached = false;
   let dissentAdjudicated = false;
+  let synthModelIdUsed: string | null = null;
+  let synthNote: string | undefined;
 
   const okCount = outcomes.filter((o) => o.status === "ok").length;
   if (okCount === 0) {
@@ -441,36 +447,64 @@ export async function conveneCouncil(
       `$${cap.capUsd.toFixed(4)} before synthesis. Advisor positions above are preserved; ` +
       `re-convene with a higher budget_usd to synthesize.`;
   } else {
-    const synthModel = entryById(catalog, plan.synthModelId);
-    const completion = await withTimeout(
-      adapters[synthModel.provider].complete(
-        synthModel.id,
-        synthesisPrompt(input.question, input.stakes, outcomes, input.context),
-        MAX_SYNTH_TOKENS,
-        { json: false },
-      ),
-      timeouts.synthMs ?? SYNTH_TIMEOUT_MS,
-      "synthesis call",
-    ).then(
-      (c) => c,
-      (err) => {
-        // A failed synthesizer must not sink the convening: preserve positions, mark loudly.
-        dissent = "*Synthesis failed — no dissent extraction performed.*";
-        synthesis = `SYNTHESIS FAILED: ${redactSecrets(err instanceof Error ? err.message : String(err))}. Advisor positions above are preserved.`;
-        return null;
-      },
-    );
-    if (completion) {
-      synthCostUsd = costOf(synthModel, completion.usage);
-      cap.spentUsd += synthCostUsd;
-      ({ dissent, verdicts, synthesis } = splitSynthOutput(
-        completion.text,
-        outcomes.map((o) => o.advisor),
-      ));
-      dissentAdjudicated = true;
+    // The elected synthesizer can fail for reasons the planner cannot see (an
+    // unfunded account 402s, a provider outage) — fall back down the ranked
+    // candidate list rather than losing adjudication. Each attempt is still
+    // bounded by the synth token ceiling and the shared cap.
+    const candidateIds =
+      plan.synthCandidateIds.length > 0 ? plan.synthCandidateIds : [plan.synthModelId];
+    const failures: string[] = [];
+    const synthPrompt = synthesisPrompt(input.question, input.stakes, outcomes, input.context);
+    for (const candidateId of candidateIds) {
+      const synthModel = entryById(catalog, candidateId);
+      const completion = await withTimeout(
+        adapters[synthModel.provider].complete(synthModel.id, synthPrompt, MAX_SYNTH_TOKENS, {
+          json: false,
+        }),
+        timeouts.synthMs ?? SYNTH_TIMEOUT_MS,
+        "synthesis call",
+      ).then(
+        (c) => c,
+        (err) => {
+          failures.push(
+            `${synthModel.id}: ${redactSecrets(err instanceof Error ? err.message : String(err))}`,
+          );
+          return null;
+        },
+      );
+      if (completion) {
+        const attemptCost = costOf(synthModel, completion.usage);
+        synthCostUsd += attemptCost;
+        cap.spentUsd += attemptCost;
+        ({ dissent, verdicts, synthesis } = splitSynthOutput(
+          completion.text,
+          outcomes.map((o) => o.advisor),
+        ));
+        dissentAdjudicated = true;
+        synthModelIdUsed = synthModel.id;
+        if (failures.length > 0) {
+          synthNote = `elected synthesizer failed (${failures.join("; ")}); ${synthModel.id} adjudicated as fallback`;
+        }
+        break;
+      }
+    }
+    if (!dissentAdjudicated) {
+      // Every candidate failed: preserve positions, mark loudly (P4 isolation rule).
+      dissent = "*Synthesis failed — no dissent extraction performed.*";
+      synthesis = `SYNTHESIS FAILED after ${failures.length} attempt(s) — ${failures.join("; ")}. Advisor positions above are preserved.`;
     }
   }
 
   const totalCostUsd = outcomes.reduce((sum, o) => sum + o.costUsd, 0) + synthCostUsd;
-  return { outcomes, dissent, verdicts, synthesis, totalCostUsd, capBreached, dissentAdjudicated };
+  return {
+    outcomes,
+    dissent,
+    verdicts,
+    synthesis,
+    totalCostUsd,
+    capBreached,
+    dissentAdjudicated,
+    synthModelId: synthModelIdUsed,
+    ...(synthNote ? { synthNote } : {}),
+  };
 }

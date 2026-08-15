@@ -118,10 +118,14 @@ function renderCouncil(
     `> **${question}**`,
     ``,
     `\`stakes ${stakes}\` · \`tier ${plan.tier}\`${plan.downgraded ? ` ⚠ downgraded from ${plan.requestedTier}` : ""} · ` +
-      `\`${ok.length} of ${plan.advisors.length} voices\` · \`synth ${plan.synthModelId ?? "none"}\` · ` +
+      `\`${ok.length} of ${plan.advisors.length} voices\` · \`synth ${result.synthModelId ?? plan.synthModelId ?? "none"}\` · ` +
       `\`est $${plan.estimateUsd.toFixed(4)} of $${plan.budgetUsd.toFixed(4)}\``,
     ``,
   ];
+
+  if (result.synthNote) {
+    lines.push(`> ⚠ ${result.synthNote}`, ``);
+  }
 
   if (highStakes) {
     lines.push(
@@ -328,7 +332,9 @@ server.registerTool(
       advisorModelIds: result.outcomes.map((o) =>
         o.provenance === "retained" ? `retained: ${o.modelId}` : o.modelId,
       ),
-      synthModelId: plan.synthModelId ?? "none",
+      // The seat that actually adjudicated (fallbacks included); the elected-but-
+      // failed synthesizer when none did — failed seats stay in the record.
+      synthModelId: result.synthModelId ?? plan.synthModelId ?? "none",
       costUsd: result.totalCostUsd,
       latencyMs,
       positions,

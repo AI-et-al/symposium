@@ -447,3 +447,65 @@ describe("retained-only council (no neutral synthesizer)", () => {
     expect(result.totalCostUsd).toBe(0);
   });
 });
+
+describe("synthesizer fallback", () => {
+  const input = { question: "Q?", stakes: "medium" as const };
+  const plan = () =>
+    planCouncil({ question: "Q?", stakes: "medium", budget_usd: 999 }, ALL_KEYS, FIXTURE);
+
+  it("ranks synth candidates cheapest-first in the plan", () => {
+    const p = plan();
+    // medium tier -> high-tier candidates from keyed {anthropic, openai, google};
+    // goog-high is cheapest, oai-high dearest at the synth token mix.
+    expect(p.synthModelId).toBe("goog-high");
+    expect(p.synthCandidateIds).toEqual(["goog-high", "anthro-high", "oai-high"]);
+  });
+
+  it("falls back to the next candidate when the elected synthesizer fails, and says so", async () => {
+    const adapters = {
+      // anthro-high is the second-ranked candidate: advisor call, then fallback synth.
+      anthropic: fakeAdapter("anthropic", [VALID_REPLY, SYNTH_OUTPUT]),
+      openai: fakeAdapter("openai", [VALID_REPLY]),
+      // goog-high (elected) errors like an unfunded account.
+      google: fakeAdapter("google", [VALID_REPLY, new Error("402 Insufficient Balance")]),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
+      ...idleClis(),
+    };
+    const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
+
+    expect(result.dissentAdjudicated).toBe(true);
+    expect(result.synthModelId).toBe("anthro-high");
+    expect(result.synthNote).toContain("goog-high");
+    expect(result.synthNote).toContain("402");
+    expect(result.synthNote).toContain("anthro-high adjudicated as fallback");
+    expect(result.dissent).toContain("binding");
+    expect(adapters.anthropic.calls).toHaveLength(2);
+    // Cost counts the successful synth attempt only (failed attempts bill nothing we meter).
+    const advisorCost = 0.003 + 0.0075 + 0.002 + 0.006 + 0.0015 + 0.00375;
+    const synthCost = 0.005 + 0.0125; // anthro-high 1000in/500out
+    expect(result.totalCostUsd).toBeCloseTo(advisorCost + synthCost, 10);
+  });
+
+  it("preserves positions and lists every attempt when all candidates fail", async () => {
+    const adapters = {
+      anthropic: fakeAdapter("anthropic", [VALID_REPLY, new Error("boom-a")]),
+      openai: fakeAdapter("openai", [VALID_REPLY, new Error("boom-o")]),
+      google: fakeAdapter("google", [VALID_REPLY, new Error("boom-g")]),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
+      ...idleClis(),
+    };
+    const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
+
+    expect(result.outcomes.every((o) => o.status === "ok")).toBe(true);
+    expect(result.dissentAdjudicated).toBe(false);
+    expect(result.synthModelId).toBeNull();
+    expect(result.synthesis).toContain("SYNTHESIS FAILED after 3 attempt(s)");
+    expect(result.synthesis).toContain("boom-g");
+    expect(result.synthesis).toContain("boom-a");
+    expect(result.synthesis).toContain("boom-o");
+  });
+});

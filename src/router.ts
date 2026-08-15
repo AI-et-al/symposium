@@ -174,6 +174,8 @@ export interface CouncilPlan {
   downgraded: boolean;
   advisors: AdvisorPlan[];
   synthModelId: string | null;
+  /** Synth candidates ranked cheapest-first; the council falls back down this list. */
+  synthCandidateIds: string[];
   estimateUsd: number;
   budgetUsd: number;
   /** Plan-level warnings (e.g. unknown retained seat tokens); empty when clean. */
@@ -195,6 +197,8 @@ interface TierEstimate {
   estimateUsd: number;
   advisorModels: Map<MeteredProvider, ModelEntry>;
   synthModel: ModelEntry | null;
+  /** All synth candidates, cheapest first — the council falls back down this list. */
+  synthCandidates: ModelEntry[];
 }
 
 function estimateTier(
@@ -214,22 +218,17 @@ function estimateTier(
 
   const synthPromptTokens =
     availableProviders.length * ADVISOR_TOKENS[tier] + questionTokens + SYNTH_PROMPT_OVERHEAD_TOKENS;
-  const synthCandidates = catalog.models.filter(
-    (m) => m.tier === SYNTH_TIER[tier] && availableProviders.includes(m.provider),
-  );
-  let synthModel: ModelEntry | null = null;
-  for (const candidate of synthCandidates) {
-    if (
-      !synthModel ||
-      callCost(candidate, synthPromptTokens, MAX_SYNTH_TOKENS) <
-        callCost(synthModel, synthPromptTokens, MAX_SYNTH_TOKENS)
-    ) {
-      synthModel = candidate;
-    }
-  }
+  const synthCandidates = catalog.models
+    .filter((m) => m.tier === SYNTH_TIER[tier] && availableProviders.includes(m.provider))
+    .sort(
+      (a, b) =>
+        callCost(a, synthPromptTokens, MAX_SYNTH_TOKENS) -
+        callCost(b, synthPromptTokens, MAX_SYNTH_TOKENS),
+    );
+  const synthModel = synthCandidates[0] ?? null;
   if (synthModel) total += callCost(synthModel, synthPromptTokens, MAX_SYNTH_TOKENS);
 
-  return { estimateUsd: total, advisorModels, synthModel };
+  return { estimateUsd: total, advisorModels, synthModel, synthCandidates };
 }
 
 /**
@@ -320,6 +319,7 @@ export function planCouncil(
     downgraded: tier !== requestedTier && !refusal,
     advisors,
     synthModelId: estimate.synthModel?.id ?? null,
+    synthCandidateIds: estimate.synthCandidates.map((m) => m.id),
     estimateUsd: estimate.estimateUsd,
     budgetUsd,
     notices,

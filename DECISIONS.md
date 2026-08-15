@@ -327,6 +327,29 @@ record of its own deliberation marks its own seat's provenance.
 - `essays/your-ai-represents-you.md` — draft in the operator's voice, centerpiece is the
   strategy ledger; publishes nothing until the operator says so.
 
+## 2026-08-15 — Janus bridge: lineage linked both ways, priority claim retired
+
+Following the llm-council examination, the same standard applied to our own
+history surfaced a problem: the credit paragraph claimed Janus "was underway
+before llm-council appeared," but the public record cannot support it —
+karpathy/llm-council was created 2025-11-22; Janus's public git history begins
+2025-12-15. The operator's recollection of earlier private work stands as
+recollection; it has no receipt, and this project does not publish claims
+without receipts. The README now claims **kinship, not priority**, and the
+dates are stated plainly in the new `docs/janus.md`.
+
+The bridge itself, both directions (items 1 and 2 of the lineage plan; the full
+chronicle deferred pending the operator's think):
+
+- Symposium side: README links Janus and its manifesto; `docs/janus.md` maps
+  what survived (Disagreement Is Signal → verbatim DISSENT; Show Your Work →
+  the advisor contract, nearly field for field; the Karpathy Principle —
+  already so named *inside Janus* — → the Karpathy constraint; Honor
+  Constraints → human primacy) and what was deliberately left behind (the
+  context bridge, the scout/executor swarms, the platform ambition).
+- Janus side: a succession note at the top of its README pointing here, with
+  the repo kept public as the historical record.
+
 ## 2026-08-15 — llm-council examined directly; the kin-and-credit note grounded in observation
 
 The operator asked whether we had ever directly observed what karpathy/llm-council

@@ -5,7 +5,9 @@ Multi-model deliberation as an MCP server. One tool: convene a council of AI adv
 subscription CLIs — on one question, surface their disagreement **verbatim**, and write
 every deliberation to a plain-Markdown ledger you own.
 
-Extracted from Janus. Three principles survive from its manifesto:
+Extracted from [Janus](https://github.com/AI-et-al/Janus). Three principles survive
+from [its manifesto](https://github.com/AI-et-al/Janus/blob/main/MANIFESTO.md)
+(the lineage is chronicled in [docs/janus.md](docs/janus.md)):
 
 1. **Disagreement is surfaced, never averaged.** The synthesis must quote each advisor's
    dissent verbatim, attributed by name. A synthesis that papers over conflict is a bug
@@ -26,9 +28,12 @@ one best answer — it optimizes for the answer. Symposium's advisors answer
 independently and never see each other; the synthesis must preserve their
 disagreement verbatim, and at high stakes there is deliberately no answer at all —
 it optimizes for the record, with budgets enforced in code and a ledger file the
-human owns. Janus, this project's parent, was underway before llm-council appeared;
-the convergence reads to us as evidence the shape is right, and the influence and
-our gratitude are acknowledged gladly.
+human owns. [Janus](https://github.com/AI-et-al/Janus), this project's parent,
+already ordered its models to treat disagreement as "the most valuable information
+in the system" and named its incremental rule the *Karpathy Principle* — the debt
+is in the name. We claim kinship, not priority (dates, honestly, in
+[docs/janus.md](docs/janus.md)); the convergence reads to us as evidence the shape
+is right, and the influence and our gratitude are acknowledged gladly.
 
 ## Install
 

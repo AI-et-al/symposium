@@ -19,9 +19,14 @@ to Claude Code as the primary instruction file. Human (Dan) reviews at each phas
    code, not in prompts.
 3. **The human is primary.** `stakes: "high"` convenings return the dissent table
    and STOP for human judgment; they do not auto-conclude.
-4. **Thin and portable.** Standard provider APIs only (API keys, no plan-auth
-   tricks). Plain-file ledger. No database. If any single provider disappears,
-   the council loses one voice and keeps working.
+4. **Thin and portable.** First-party auth only, no scraping: standard provider
+   APIs (API keys) and, since v0.7, official first-party CLIs running under the
+   operator's own subscription auth as opt-in retained seats. Plain-file ledger.
+   No database. If any single provider disappears, the council loses one voice
+   and keeps working. *(Amended 2026-08-15 with v0.7 retained seats, per the
+   2026-08-12 decision record; the original read "API keys, no plan-auth
+   tricks" — the line it drew against scraping and browser-session tricks is
+   unchanged.)*
 
 ## 1. Repo setup
 

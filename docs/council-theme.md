@@ -16,6 +16,22 @@ wrong.
 | GPT | 🟢 | 🟩 | OpenAI green |
 | Gemini | 🔵 | 🟦 | Google blue |
 | Grok | ⚫ | ⬛ | xAI monochrome |
+| DeepSeek | 🟣 | 🟪 | DeepSeek violet |
+| Claude Code | 🧡 | 🟧 | Anthropic terracotta, retained |
+| Codex | 💚 | 🟩 | OpenAI green, retained |
+| Gemini CLI | 💙 | 🟦 | Google blue, retained |
+
+**Retained seats wear hearts (v0.7).** A retained seat — the operator's own
+subscription CLI, carrying their context — keeps its provider's hue but swaps the
+circle for a heart: a seat that belongs to someone. Identity (hue) and provenance
+(shape) are separate axes, exactly as identity and status are. The bar fill is
+shared with the provider's neutral seat, which is safe for the same reason the
+bars were already safe: no bar appears without its numeral, and no bar shares a
+line with another seat's content. Chip substitution matches longest-name-first
+("Claude Code" before "Claude", "Gemini CLI" before "Gemini") so a retained
+seat's attribution line can never be half-chipped with its neutral sibling's
+color — the implementation sorts `SEAT` keys by length and the test suite pins
+it (`test/theme.test.ts`).
 
 | Glyph | Meaning |
 |---|---|

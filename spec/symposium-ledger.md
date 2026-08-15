@@ -4,7 +4,7 @@
 were convened on one question: who spoke, who disagreed, in whose words, at what cost,
 and what remains for the human to decide.
 
-Schema id: `symposium-ledger/v2` · Status: in production use, pre-1.0 · License: **CC0**
+Schema id: `symposium-ledger/v3` · Status: in production use, pre-1.0 · License: **CC0**
 
 This document describes a format we use daily. It is not a standards-body artifact and
 does not claim to be one; if the format is useful, take it — CC0 means exactly that.
@@ -45,18 +45,19 @@ inverts that:
 
 ```yaml
 ---
-schema: symposium-ledger/v2
+schema: symposium-ledger/v3
 date: 2026-08-13T01:14:19.029Z       # ISO 8601, UTC
 stakes: medium                        # low | medium | high | audited
 mode: standard                        # audited iff stakes == audited, else standard
-models: [claude-sonnet-5, gpt-5.6-terra, gemini-3.6-flash, grok-4.20-0309-non-reasoning, synth: grok-4.5]
+models: [claude-sonnet-5, gpt-5.6-terra, retained: claude-code, synth: grok-4.5]
 cost_usd: 0.1020                      # actual total, 4 decimals
 latency_ms: 94873                     # wall-clock for the whole convening
 ---
 ```
 
 `models` lists advisor model ids in seat order, with the synthesizer last under a
-`synth:` prefix. All fields are REQUIRED.
+`synth:` prefix. Seats held by a subscription CLI rather than a metered API carry a
+`retained:` prefix (v3), mirroring the `synth:` idiom. All fields are REQUIRED.
 
 ## Sections, in order
 
@@ -73,7 +74,7 @@ The full question, followed by any context the convener supplied, verbatim.
 One block per seat, in seat order:
 
 ```markdown
-### Claude (claude-sonnet-5) — confidence 0.62 — cost $0.0383
+### Claude (claude-sonnet-5) — neutral — confidence 0.62 — cost $0.0383
 <position body, ≤300 words per the advisor contract>
 
 *Dissent from framing:* <present only if the advisor challenged the question itself>
@@ -81,8 +82,12 @@ One block per seat, in seat order:
 - Self-objection: <the advisor's strongest objection to its own position>
 ```
 
+- The provenance token (v3) is `retained` or `neutral` — see
+  [Seat provenance](#seat-provenance).
 - `confidence` is the advisor's self-reported 0.00–1.00.
-- ` — cost $X.XXXX` is the actual per-seat spend (v2; omit only if unmetered).
+- ` — cost $X.XXXX` is the actual per-seat spend (v2; omit only if unmetered —
+  retained seats are unmetered, so their headings carry no cost figure rather
+  than a fictitious $0.0000).
 - **Failed seats stay in the record.** A seat that returned unparseable output after
   one retry gets body `MALFORMED: <reason>`; a seat that never ran gets
   `Skipped: <reason>` (no key, timeout, provider error). Failed seats carry
@@ -131,6 +136,22 @@ returned four questions instead.
 Wikilink targets (`- relates_to [[slug]]`) so records can be woven into a notes
 system. Defaults to the record's own slug.
 
+## Seat provenance
+
+Every seat declares (v3) whether it is:
+
+- **`retained`** — an agent authenticated by a human's own subscription (an
+  official first-party CLI such as `claude -p`, `codex exec`, or `gemini`),
+  carrying that human's context: informed-but-interested counsel.
+- **`neutral`** — a cold API instance with no history and no stake.
+
+Provenance discloses context and incentives; **it does not rank seats.** The
+distinction exists because a reader must be able to ask whether a dissenting
+seat speaks from knowledge of its human or from independence — the two are
+different evidence, and both are valuable. Retained seats are not free seats:
+they consume subscription quota and run under provider terms of service, even
+though no API meter turns.
+
 ## Conformance, minimally
 
 An implementation that is not Symposium produces a conforming deliberation record if:
@@ -140,6 +161,9 @@ An implementation that is not Symposium produces a conforming deliberation recor
   and a reason for silence (MUST);
 - costs are recorded where the seats are metered (MUST if metered, per-seat SHOULD);
 - verdicts use the five-word vocabulary (SHOULD);
+- seats declare provenance (`retained` | `neutral`) where the implementation
+  distinguishes them (SHOULD; MUST if any seat runs under a human's own
+  subscription — a reader is entitled to know which counsel is interested);
 - above the implementation's chosen stakes threshold, the record ends in open
   questions rather than a conclusion (MUST, if the implementation has stakes at all);
 - the record is a plain text file the operator owns (MUST).
@@ -168,17 +192,16 @@ this as an open area (see v3 directions).
 - **v2** — added per-seat `cost` on position headings and the machine-readable
   `## Verdicts` section. The verdicts requirement was itself deliberated by the
   council before adoption (see `ledger/` in the reference repo, 2026-08-10).
+- **v3** — added seat provenance: the `retained | neutral` token on position
+  headings and the `retained:` prefix in the frontmatter `models` list.
+  Introduced with the reference implementation's v0.7 retained seats
+  (subscription-CLI council members), 2026-08-15.
 
-## v3 directions (not yet implemented)
+## Future directions (not yet implemented)
 
-- **Seat provenance.** Seats will declare `retained` (an agent authenticated by a
-  human's own subscription, carrying that human's context — informed but interested
-  counsel) or `neutral` (a cold API instance). Provenance discloses context and
-  incentives; it does not rank seats. The distinction exists because a reader must be
-  able to ask whether a dissenting seat speaks from knowledge of its human or from
-  independence — the two are different evidence.
 - **Redaction markers.** A conforming way to elide sensitive spans without breaking
-  the verbatim guarantee for what remains.
+  the verbatim guarantee for what remains. Still the format's largest open area —
+  see [Honesty constraints](#honesty-constraints).
 
 ## Specimens
 

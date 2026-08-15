@@ -1,8 +1,9 @@
 # 🏛️ Symposium
 
 Multi-model deliberation as an MCP server. One tool: convene a council of AI advisors —
-**Claude, GPT, Gemini, Grok, DeepSeek** — on one question, surface their disagreement
-**verbatim**, and write every deliberation to a plain-Markdown ledger you own.
+**Claude, GPT, Gemini, Grok, DeepSeek**, plus **retained seats** held by your own
+subscription CLIs — on one question, surface their disagreement **verbatim**, and write
+every deliberation to a plain-Markdown ledger you own.
 
 Extracted from Janus. Three principles survive from its manifesto:
 
@@ -13,6 +14,16 @@ Extracted from Janus. Three principles survive from its manifesto:
    enforced against a hard budget in code — downgrade, refuse, or abort mid-flight.
 3. **The human is primary.** High-stakes convenings do not conclude: they return the
    dissent and stop with the questions only you can answer.
+
+**Kin and credit.** The spec's second principle is named the *Karpathy constraint*
+(every step small, bounded, observable; cost shown before it is spent), and Andrej
+Karpathy's [llm-council](https://github.com/karpathy/llm-council) explored the same
+instinct — several models on one question, a chairman synthesizing. Janus, this
+project's parent, was underway before llm-council appeared; the convergence reads to
+us as evidence the shape is right, and the influence and our gratitude are
+acknowledged gladly. Where Symposium differs is the point of emphasis: dissent
+preserved verbatim as the product, a ledger file the human owns, and budgets enforced
+in code.
 
 ## Install
 
@@ -31,6 +42,39 @@ claude mcp add symposium \
 Any missing key simply leaves that seat empty with a notice. The council runs with **2+
 voices** and refuses below that. No database, no accounts, no telemetry — if a provider
 disappears, the council loses one voice and keeps working.
+
+Once published to npm (pending the release-gate checklist in `DECISIONS.md`), the
+server will also run as `npx -y symposium` — the package is already built for it.
+
+## Retained seats (v0.7)
+
+Your own subscription CLIs can hold council seats alongside the cold API voices.
+Opt in explicitly — a subscription CLI is never invoked unasked:
+
+```sh
+claude mcp add symposium \
+  -e SYMPOSIUM_RETAINED_SEATS=claude,codex,gemini \
+  ... \
+  -- npx tsx src/server.ts
+```
+
+That seats **Claude Code** (`claude -p`), **Codex** (`codex exec`), and **Gemini CLI**
+(`gemini`) as subprocesses in answer-only mode: read-only/no-tools flags, no MCP
+servers, no session files, run from your home directory so they carry your user-level
+context and nothing else. A seat whose CLI is not on PATH is simply skipped with a
+notice, like a missing API key.
+
+A retained seat is **retained counsel**: it runs under your subscription and may know
+your context — informed in ways no neutral seat can match, and interested in ways no
+neutral seat is. The ledger marks every seat `retained` or `neutral` (schema v3);
+provenance disclosures rank nothing — they let the reader ask whether a dissenting
+voice speaks from knowledge of you, or from independence. Seating both your retained
+Claude and the neutral API Claude is legitimate and sometimes the most interesting
+configuration.
+
+Retained seats bill nothing through the API meter and appear unmetered in the ledger —
+but they are **not free**: they consume your subscription quota, run under each
+provider's terms of service, and cost you the queue time of your own tools.
 
 ## The tool
 
@@ -59,10 +103,10 @@ return; a mid-flight breach aborts synthesis and preserves the positions already
 
 One Markdown file per convening in `ledger/` (or `SYMPOSIUM_LEDGER_DIR` — pointing it at
 a [Basic Memory](https://basicmemory.com) project is the intended deployment, not a
-special mode). Schema `symposium-ledger/v2`: frontmatter (date, stakes, mode, models,
-cost, latency), verbatim positions with per-seat cost, the DISSENT section, a
-machine-readable per-advisor **verdicts** block (`adopt | reject | partial | abstain |
-open`), and the synthesis. Abridged from a real convening:
+special mode). Schema `symposium-ledger/v3`: frontmatter (date, stakes, mode, models,
+cost, latency), verbatim positions with per-seat provenance and cost, the DISSENT
+section, a machine-readable per-advisor **verdicts** block (`adopt | reject | partial |
+abstain | open`), and the synthesis. Abridged from a real convening:
 
 ```markdown
 ---
@@ -109,6 +153,11 @@ that set this project's roadmap. Implement the format without asking; that's wha
 - **Advisors fail.** Malformed JSON after one retry, provider errors, and timeouts are
   recorded as failed seats — the council proceeds, and the record says exactly who did
   not speak and why.
+- **Retained seats are not free, and answer-only is best-effort.** "No API billing"
+  is not "zero cost" (quota, ToS, opportunity cost — the council itself corrected this
+  framing). The no-tools containment uses each CLI's own flags, verified against the
+  versions recorded in `DECISIONS.md`; the Gemini CLI adapter is docs-derived and
+  unverified until a live install exists.
 
 ## Non-goals (v1)
 

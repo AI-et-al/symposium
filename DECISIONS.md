@@ -200,6 +200,69 @@ noted in spec). Also adopted, from Claude's dissent-from-framing: optimize for n
 success over project survival — absorption of the format without attribution counts
 as success. CC0 was chosen for exactly this, before we knew it.
 
+## 2026-08-15 — Motion 2 executed: v0.7 retained seats + npm packaging
+
+Design decisions, in the order they bit:
+
+- **Opt-in only** — `SYMPOSIUM_RETAINED_SEATS=claude,codex,gemini`. A subscription
+  CLI is never probed, let alone invoked, without its token in that list: it burns
+  the operator's quota and carries their context into a durable record, so silence
+  is the only acceptable default. Unknown tokens are warned about at startup and in
+  plan notices, never silently dropped. Opted-in seats whose binary is not on PATH
+  skip with a notice, exactly like a missing API key.
+- **Seat names are the CLI products** — "Claude Code", "Codex", "Gemini CLI" — not
+  "Claude (retained)". The CLI carrying its human's config *is* the counsel entity;
+  parenthesized names would also have complicated the verdict-line regex. The chip
+  substitution and verdict parsing sort names longest-first so "Claude Code" never
+  half-matches as "Claude" (pinned in test/theme.test.ts and council tests).
+- **Retained + neutral same-lineage seats may coexist** — seating your retained
+  Claude beside the neutral API Claude is legitimate and sometimes the interesting
+  configuration (informed-vs-independent, same lineage). No dedup rule.
+- **Flat $0 in the router; unmetered in the ledger** — retained seats add nothing to
+  the estimate, never downgrade, and cannot breach the cap. Per the council's own
+  2026-08-12 correction, "no API billing" is NOT "zero marginal cost" (quota, ToS,
+  opportunity cost) — so the ledger omits the cost figure for retained seats rather
+  than recording a fictitious $0.0000, and the README says why.
+- **The synthesizer stays neutral** — adjudication of dissent is not delegated to an
+  interested seat in v0.7. A council of only retained seats (no API keys) still
+  convenes if it has quorum, but lands in the existing NOT-ADJUDICATED state: the
+  reader is the synthesizer. Revisit only with a deliberate decision.
+- **Answer-only mode, per CLI, verified where possible** — claude 2.1.223:
+  `-p --output-format text --setting-sources user --strict-mcp-config
+  --no-session-persistence --disallowedTools <all builtins>`; codex-cli 0.147.0:
+  `exec --sandbox read-only --skip-git-repo-check --ephemeral --color never -C ~
+  -o <tmpfile> -` (stdout is a transcript; the clean final message comes via `-o`).
+  Gemini CLI: no local install existed at build time — bare stdin one-shot,
+  docs-derived, marked unverified; flag drift surfaces as a recorded error outcome.
+  Containment is best-effort by each CLI's own flags: these are the operator's own
+  tools under their own account, so the posture is answer-only discipline, not a
+  security boundary against the operator.
+- **Subprocess hygiene** — prompt on stdin (no shell, no ARG_MAX, no ps leakage),
+  cwd = home directory (user-level context loads; the MCP client's arbitrary cwd
+  does not leak project context into a seat), child SIGKILLed on timeout so no
+  subprocess outlives its convening.
+- **Retained timeout 180s** (vs 60s API advisors) — CLIs pay spawn + auth + queue
+  overhead an API call does not, and parallel fan-out makes tail latency nearly
+  free. Both live seats, asked about their own timeout in the v0.7 smoke
+  convenings, independently counseled generosity and treating a timeout as a
+  recorded failure rather than a retry — which is what the existing error path does.
+- **Ledger schema v3** — provenance token (`retained | neutral`) on every position
+  heading, and a `retained:` prefix in the frontmatter models list mirroring the
+  existing `synth:` idiom. Spec principle 4 amended as the 2026-08-12 record
+  promised: "first-party auth only, no scraping." The CC0 spec's v3-directions
+  section became the specified v3; redaction markers remain the open area.
+- **Theme: hearts for retained seats** — 🧡💚💙 keep the provider hue, swap circle
+  for heart (a seat that belongs to someone). Identity=hue, provenance=shape,
+  status=marks: three separate axes. Presentation helpers extracted to src/theme.ts
+  so the chip rules are finally unit-testable.
+- **npm packaging, publication still gated** — `bin: symposium → dist/server.js`
+  (tsc build via tsconfig.build.json, shebang preserved, models.json copied into
+  dist), `files` allowlist ships dist/src/spec/docs only — no essays (unpublished
+  by rule), no ledger records, no .env; verified via `npm pack --dry-run`.
+  `prepublishOnly` gates on typecheck+tests. Remaining before `npm publish`, per
+  the 2026-08-10 npm convening: Dan's sign-off, and the "did the tool change a
+  real decision" question that convening said gates announcement.
+
 ## 2026-08-12 — Motion 1 executed: ledger spec extracted, specimens, essay
 
 - `spec/symposium-ledger.md` — the v2 format as `ledger.ts` actually writes it,

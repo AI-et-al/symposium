@@ -1,88 +1,63 @@
+#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
   conveneCouncil,
   type AdvisorOutcome,
-  type AdvisorVerdict,
   type CouncilResult,
 } from "./council.js";
 import { writeLedger, type AdvisorPosition, type Stakes } from "./ledger.js";
-import { loadCatalog, planCouncil, type AdvisorName, type CouncilPlan } from "./router.js";
+import {
+  loadCatalog,
+  parseRetainedTokens,
+  planCouncil,
+  RETAINED_SEATS,
+  type CouncilPlan,
+  type RetainedToken,
+} from "./router.js";
+import {
+  BAND,
+  bar,
+  BROKEN_BAND,
+  budgetMeter,
+  chip,
+  chipAttributions,
+  DEGRADED_BAND,
+  EMPTY_BAR,
+  firstSentence,
+  STATUS_MARK,
+  verdictDiff,
+} from "./theme.js";
 
 const catalog = loadCatalog(); // fail fast on a malformed models.json
 
-// ── The chamber theme (docs/council-theme.md) ────────────────────────────────
-// Color carriers that survive MCP tool-result rendering: emoji chips + diff fences.
-// SYMPOSIUM_MONOCHROME=1 degrades to the glyph ladder with no loss of meaning.
-
-const MONO = process.env.SYMPOSIUM_MONOCHROME === "1";
-
-const SEAT: Record<AdvisorName, { chip: string; fill: string }> = {
-  Claude: { chip: "🟠", fill: "🟧" },
-  GPT: { chip: "🟢", fill: "🟩" },
-  Gemini: { chip: "🔵", fill: "🟦" },
-  Grok: { chip: "⚫", fill: "⬛" },
-  DeepSeek: { chip: "🟣", fill: "🟪" },
-};
-
-const chip = (name: AdvisorName) => (MONO ? "●" : SEAT[name].chip);
-
-function bar(name: AdvisorName, confidence: number): string {
-  const filled = Math.max(0, Math.min(10, Math.round(confidence * 10)));
-  return MONO
-    ? "▓".repeat(filled) + "░".repeat(10 - filled)
-    : SEAT[name].fill.repeat(filled) + "⬜".repeat(10 - filled);
+// Retained seats: detect opted-in CLIs once at startup. A subscription CLI is never
+// probed, let alone invoked, unless its token appears in SYMPOSIUM_RETAINED_SEATS.
+const { tokens: retainedTokens, unknown: unknownRetainedTokens } = parseRetainedTokens(
+  process.env.SYMPOSIUM_RETAINED_SEATS,
+);
+const cliAvailable: Partial<Record<RetainedToken, boolean>> = {};
+for (const token of retainedTokens) {
+  const seat = RETAINED_SEATS.find((s) => s.token === token)!;
+  const finder = process.platform === "win32" ? "where" : "which";
+  cliAvailable[token] = spawnSync(finder, [seat.command], { stdio: "ignore" }).status === 0;
 }
-
-const EMPTY_BAR = (MONO ? "░".repeat(10) : "⬜".repeat(10)) + " ✗";
-const BAND = "▓".repeat(48);
-const DEGRADED_BAND = "▒".repeat(48);
-const BROKEN_BAND = "█".repeat(48);
-
-function budgetMeter(spentUsd: number, capUsd: number, breached: boolean): string {
-  if (breached) return (MONO ? "█".repeat(10) : "🟥".repeat(10)) + ` ${Math.round((spentUsd / capUsd) * 100)}% of $${capUsd.toFixed(4)} cap — breached ✗`;
-  const filled = Math.max(0, Math.min(10, Math.round((spentUsd / capUsd) * 10)));
-  const fill = MONO ? "▓" : "🟩";
-  const empty = MONO ? "░" : "⬜";
-  return fill.repeat(filled) + empty.repeat(10 - filled) + ` ${Math.round((spentUsd / capUsd) * 100)}% of $${capUsd.toFixed(4)} cap`;
-}
-
-/** Chip only attribution lines (`> **Name —**`) — never names inside quoted bodies. */
-function chipAttributions(dissentBody: string): string {
-  if (MONO) return dissentBody;
-  return dissentBody.replace(
-    /^(>\s*\*\*)(Claude|GPT|Gemini|Grok|DeepSeek)(\s*—)/gm,
-    (_m, pre: string, name: AdvisorName, post: string) => `${pre}${SEAT[name].chip} ${name}${post}`,
+if (unknownRetainedTokens.length > 0) {
+  console.error(
+    `symposium: ignoring unknown retained seat token(s): ${unknownRetainedTokens.join(", ")} (known: claude, codex, gemini)`,
   );
-}
-
-function firstSentence(text: string, max = 64): string {
-  const sentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
-  return sentence.length <= max ? sentence : sentence.slice(0, max - 1).trimEnd() + "…";
-}
-
-const STATUS_MARK: Record<AdvisorOutcome["status"], string> = {
-  ok: "",
-  malformed: "◐ ",
-  error: "✗ ",
-};
-
-function verdictDiff(verdicts: AdvisorVerdict[]): string[] {
-  if (verdicts.length === 0 || verdicts.every((v) => v.verdict === "unspecified")) return [];
-  const lines = verdicts.map((v) => {
-    const prefix = v.verdict === "adopt" ? "+" : v.verdict === "reject" ? "-" : " ";
-    const word = { adopt: "adopts", reject: "rejects", partial: "partial", abstain: "abstain", open: "open", unspecified: "—" }[v.verdict];
-    return `${prefix} ${word.padEnd(8)} ${chip(v.advisor)} ${v.advisor.padEnd(9)}${v.note ? ` ${v.note}` : ""}`;
-  });
-  return ["## VERDICTS", "", "```diff", ...lines, "```", ""];
 }
 
 function estimateBlock(plan: CouncilPlan): string {
   const advisors = plan.advisors
-    .map((a) => `${a.name} → ${a.available ? a.modelId : "(skipped)"}`)
+    .map((a) => `${a.name} → ${a.available ? a.modelId : "(skipped)"}${a.provenance === "retained" && a.available ? " (retained)" : ""}`)
     .join(", ");
-  const notices = plan.advisors.filter((a) => a.notice).map((a) => `${a.name} ${a.notice}`);
+  const notices = [
+    ...plan.advisors.filter((a) => a.notice).map((a) => `${a.name} ${a.notice}`),
+    ...plan.notices,
+  ];
   const lines = [
     `\`stakes\` est **$${plan.estimateUsd.toFixed(4)}** of $${plan.budgetUsd.toFixed(4)} · ` +
       `tier ${plan.tier}${plan.downgraded ? ` ⚠ downgraded from ${plan.requestedTier}` : ""}`,
@@ -93,27 +68,32 @@ function estimateBlock(plan: CouncilPlan): string {
 }
 
 function positionOf(outcome: AdvisorOutcome): AdvisorPosition {
+  const provenance = outcome.provenance ?? "neutral";
+  // Retained seats are unmetered — the spec says omit cost rather than record a fake $0.
+  const costUsd = provenance === "retained" ? undefined : outcome.costUsd;
   if (outcome.status === "ok" && outcome.reply) {
     const framing = outcome.reply.dissent_from_framing;
     return {
       advisor: outcome.advisor,
       modelId: outcome.modelId,
+      provenance,
       confidence: outcome.reply.confidence,
       position:
         outcome.reply.position + (framing ? `\n\n*Dissent from framing:* ${framing}` : ""),
       uncertainties: outcome.reply.key_uncertainties,
       selfObjection: outcome.reply.strongest_objection_to_own_position,
-      costUsd: outcome.costUsd,
+      costUsd,
     };
   }
   return {
     advisor: outcome.advisor,
     modelId: outcome.modelId,
+    provenance,
     confidence: 0,
     position: `${outcome.status.toUpperCase()}: ${outcome.detail ?? "no detail"}`,
     uncertainties: [],
     selfObjection: "n/a",
-    costUsd: outcome.costUsd,
+    costUsd,
   };
 }
 
@@ -184,15 +164,18 @@ function renderCouncil(
     );
   }
   for (const seat of skipped) {
-    lines.push(`| ○ ${seat.name} | ${EMPTY_BAR} | *seat empty — no API key* |`);
+    const why = seat.notice?.replace(/^skipped — /, "") ?? "unavailable";
+    lines.push(`| ○ ${seat.name} | ${EMPTY_BAR} | *seat empty — ${why}* |`);
   }
   lines.push(``);
 
   for (const o of ok) {
     const reply = o.reply;
     if (!reply) continue;
+    const seatBadge =
+      o.provenance === "retained" ? ` · retained — no API metering` : ` · cost $${o.costUsd.toFixed(4)}`;
     lines.push(
-      `#### ${chip(o.advisor)} ${o.advisor} · \`${o.modelId}\` · cost $${o.costUsd.toFixed(4)}`,
+      `#### ${chip(o.advisor)} ${o.advisor} · \`${o.modelId}\`${seatBadge}`,
       ``,
       `${bar(o.advisor, reply.confidence)} **${reply.confidence.toFixed(2)}**`,
       ``,
@@ -255,19 +238,21 @@ function renderCouncil(
   return lines.join("\n");
 }
 
-const server = new McpServer({ name: "symposium", version: "0.6.0" });
+const server = new McpServer({ name: "symposium", version: "0.7.0" });
 
 server.registerTool(
   "convene_council",
   {
     title: "Convene the council",
     description:
-      "Convene a council of AI advisors (Claude, GPT, Gemini, Grok, DeepSeek) on one question. " +
+      "Convene a council of AI advisors (Claude, GPT, Gemini, Grok, DeepSeek — plus opted-in " +
+      "retained seats held by the operator's own subscription CLIs) on one question. " +
       "Fans out to live advisors in parallel, surfaces disagreement verbatim in a DISSENT " +
       "section with per-advisor verdicts, synthesizes (or, for high/audited stakes, stops " +
       "with open questions for the human), and writes the full deliberation to a Markdown " +
-      "ledger (schema v2). Cost is estimated pre-flight and enforced against a budget; " +
-      "set dry_run to preview the estimate without calling any provider or writing a ledger.",
+      "ledger (schema v3, with seat provenance). Cost is estimated pre-flight and enforced " +
+      "against a budget; set dry_run to preview the estimate without calling any provider " +
+      "or writing a ledger.",
     inputSchema: {
       question: z.string().min(1, "question must be non-empty"),
       context: z.string().optional(),
@@ -283,6 +268,7 @@ server.registerTool(
       { question, context, stakes: stakes as Stakes, budget_usd },
       process.env,
       catalog,
+      cliAvailable,
     );
 
     if (plan.refusal) {
@@ -324,11 +310,12 @@ server.registerTool(
       .map((a) => ({
         advisor: a.name,
         modelId: "skipped",
+        provenance: a.provenance,
         confidence: 0,
         position: `Skipped: ${a.notice}`,
         uncertainties: [],
         selfObjection: "n/a",
-        costUsd: 0,
+        ...(a.provenance === "retained" ? {} : { costUsd: 0 }),
       }));
     const positions = [...result.outcomes.map(positionOf), ...skippedSeats];
     const latencyMs = Date.now() - started;
@@ -338,7 +325,9 @@ server.registerTool(
       question,
       context,
       stakes: stakes as Stakes,
-      advisorModelIds: result.outcomes.map((o) => o.modelId),
+      advisorModelIds: result.outcomes.map((o) =>
+        o.provenance === "retained" ? `retained: ${o.modelId}` : o.modelId,
+      ),
       synthModelId: plan.synthModelId ?? "none",
       costUsd: result.totalCostUsd,
       latencyMs,

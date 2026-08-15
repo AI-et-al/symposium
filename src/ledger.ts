@@ -7,11 +7,13 @@ export type Stakes = "low" | "medium" | "high" | "audited";
 export interface AdvisorPosition {
   advisor: string;
   modelId: string;
+  /** Seat provenance (schema v3): retained | neutral. Omitted only for pre-v3 callers. */
+  provenance?: "neutral" | "retained";
   confidence: number;
   position: string;
   uncertainties: string[];
   selfObjection: string;
-  /** Actual per-seat spend (schema v2); 0 for skipped seats. */
+  /** Actual per-seat spend; omit for unmetered (retained) seats per the spec. */
   costUsd?: number;
 }
 
@@ -68,7 +70,9 @@ function renderPositions(positions: AdvisorPosition[]): string {
   return positions
     .map(
       (p) =>
-        `### ${p.advisor} (${p.modelId}) — confidence ${p.confidence.toFixed(2)}` +
+        `### ${p.advisor} (${p.modelId})` +
+        (p.provenance ? ` — ${p.provenance}` : "") +
+        ` — confidence ${p.confidence.toFixed(2)}` +
         (p.costUsd !== undefined ? ` — cost $${p.costUsd.toFixed(4)}` : "") +
         `\n${p.position}\n` +
         `- Uncertainties: ${p.uncertainties.join("; ") || "none stated"}\n` +
@@ -93,7 +97,7 @@ export function renderLedger(entry: LedgerEntry): string {
     `- relates_to [[${slugify(entry.question)}]]`;
 
   return `---
-schema: symposium-ledger/v2
+schema: symposium-ledger/v3
 date: ${entry.date.toISOString()}
 stakes: ${entry.stakes}
 mode: ${mode}

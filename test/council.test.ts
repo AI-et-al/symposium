@@ -3,6 +3,7 @@ import {
   advisorPrompt,
   conveneCouncil,
   parseReply,
+  parseVerdicts,
   redactSecrets,
   runAdvisor,
   splitSynthOutput,
@@ -80,6 +81,13 @@ const model = (id: string) => {
   if (!entry) throw new Error(id);
   return entry;
 };
+
+/** Idle retained-CLI fakes so adapter records satisfy the full Provider union. */
+const idleClis = () => ({
+  "claude-cli": fakeAdapter("claude-cli", []),
+  "codex-cli": fakeAdapter("codex-cli", []),
+  "gemini-cli": fakeAdapter("gemini-cli", []),
+});
 
 describe("parsing", () => {
   it("strips markdown fences", () => {
@@ -244,6 +252,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []), // no XAI key in ALL_KEYS -> Grok never seated
       deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -270,6 +279,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -290,6 +300,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -310,6 +321,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [boom(), boom()]),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
 
@@ -317,5 +329,82 @@ describe("conveneCouncil", () => {
     expect(result.dissent).toContain("No positions returned");
     expect(result.synthesis).toContain("No synthesis possible");
     expect(adapters.google.calls).toHaveLength(1); // advisor attempt only — no synth call
+  });
+});
+
+describe("retained seats", () => {
+  const SYNTH_WITH_RETAINED = [
+    "## DISSENT",
+    "### 1 · scope",
+    '> **Claude —** "caveats matter"',
+    ">",
+    '> **Claude Code —** "context says otherwise"',
+    "## VERDICTS",
+    "- Claude: adopt — clean position",
+    "- GPT: reject — overclaims",
+    "- Claude Code: partial — informed but interested",
+    "## SYNTHESIS",
+    "Adopts Claude; rejects GPT; partial on Claude Code.",
+  ].join("\n");
+
+  it("seats a retained advisor, discloses provenance, and keeps it unmetered", async () => {
+    const env = { ANTHROPIC_API_KEY: "k", OPENAI_API_KEY: "k", SYMPOSIUM_RETAINED_SEATS: "claude" };
+    const plan = planCouncil(
+      { question: "Q?", stakes: "medium", budget_usd: 999 },
+      env,
+      FIXTURE,
+      { claude: true },
+    );
+    const adapters = {
+      // medium tier, keys {anthropic, openai} -> synth is anthro-high (cheapest high)
+      anthropic: fakeAdapter("anthropic", [VALID_REPLY, SYNTH_WITH_RETAINED]),
+      openai: fakeAdapter("openai", [VALID_REPLY]),
+      google: fakeAdapter("google", []),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
+      "claude-cli": fakeAdapter("claude-cli", [VALID_REPLY]),
+    };
+    const result = await conveneCouncil({ question: "Q?", stakes: "medium" }, plan, FIXTURE, adapters);
+
+    const retained = result.outcomes.find((o) => o.advisor === "Claude Code");
+    expect(retained?.status).toBe("ok");
+    expect(retained?.provenance).toBe("retained");
+    expect(retained?.modelId).toBe("claude-code");
+    expect(retained?.costUsd).toBe(0); // flat seat: zero-priced regardless of usage
+
+    // The retained seat was prompted as informed-but-interested counsel.
+    expect(adapters["claude-cli"].calls[0]).toContain("You are a retained seat");
+    // Neutral seats were not.
+    expect(adapters.openai.calls[0]).not.toContain("retained seat");
+
+    // The synthesizer is told which position comes from a retained seat.
+    const synthPrompt = adapters.anthropic.calls[1];
+    expect(synthPrompt).toContain("Claude Code (claude-code — retained seat, carries its operator's context)");
+
+    // Total cost counts metered seats only: 2 advisors + 1 synth, all 1000in/500out.
+    const metered = (0.003 + 0.0075) + (0.002 + 0.006) + (0.005 + 0.0125);
+    expect(result.totalCostUsd).toBeCloseTo(metered, 10);
+
+    expect(result.verdicts).toEqual([
+      { advisor: "Claude", verdict: "adopt", note: "clean position" },
+      { advisor: "GPT", verdict: "reject", note: "overclaims" },
+      { advisor: "Claude Code", verdict: "partial", note: "informed but interested" },
+    ]);
+  });
+
+  it("advisorPrompt carries the retained-counsel line only for retained seats", () => {
+    expect(advisorPrompt("Claude Code", "Q?", undefined, "retained")).toContain(
+      "run under your operator's own subscription",
+    );
+    expect(advisorPrompt("Claude", "Q?")).not.toContain("retained");
+  });
+
+  it("parseVerdicts does not confuse 'Claude' with 'Claude Code'", () => {
+    const body = ["- Claude Code: adopt — carries context", "- Claude: reject — too cautious"].join("\n");
+    expect(parseVerdicts(body, ["Claude", "Claude Code"])).toEqual([
+      { advisor: "Claude", verdict: "reject", note: "too cautious" },
+      { advisor: "Claude Code", verdict: "adopt", note: "carries context" },
+    ]);
   });
 });

@@ -3,16 +3,26 @@ import type { Stakes } from "./ledger.js";
 import {
   ADVISOR_TOKENS,
   MAX_SYNTH_TOKENS,
+  retainedPriced,
   type AdvisorName,
   type Catalog,
   type CouncilPlan,
   type ModelEntry,
+  type Priced,
+  type Provenance,
   type Provider,
+  type RetainedProvider,
 } from "./router.js";
 import { anthropicAdapter } from "./providers/anthropic.js";
 import { deepseekAdapter } from "./providers/deepseek.js";
 import { googleAdapter } from "./providers/google.js";
 import { openaiAdapter } from "./providers/openai.js";
+import {
+  claudeCliAdapter,
+  codexCliAdapter,
+  geminiCliAdapter,
+  RETAINED_TIMEOUT_MS,
+} from "./providers/retained.js";
 import { xaiAdapter } from "./providers/xai.js";
 import type { CompletionUsage, ProviderAdapter } from "./providers/types.js";
 
@@ -34,6 +44,8 @@ export interface AdvisorOutcome {
   /** Error message or parse-failure note for malformed/error outcomes. */
   detail?: string;
   costUsd: number;
+  /** Seat provenance (ledger schema v3); set by conveneCouncil, neutral when absent. */
+  provenance?: Provenance;
 }
 
 export type Verdict = "adopt" | "reject" | "partial" | "abstain" | "open" | "unspecified";
@@ -64,6 +76,9 @@ export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
   google: googleAdapter,
   xai: xaiAdapter,
   deepseek: deepseekAdapter,
+  "claude-cli": claudeCliAdapter,
+  "codex-cli": codexCliAdapter,
+  "gemini-cli": geminiCliAdapter,
 };
 
 /** Per-advisor call ceiling (spec §5 P4: 60s/advisor); applies to first call and retry separately. */
@@ -105,13 +120,24 @@ export function redactSecrets(text: string): string {
     .replace(/\bxai-[A-Za-z0-9_-]{12,}/g, "[redacted-key]");
 }
 
-export function costOf(model: ModelEntry, usage: CompletionUsage): number {
+export function costOf(model: Priced, usage: CompletionUsage): number {
   return (usage.inputTokens / 1e6) * model.in_per_mtok + (usage.outputTokens / 1e6) * model.out_per_mtok;
 }
 
-export function advisorPrompt(name: AdvisorName, question: string, context?: string): string {
+export function advisorPrompt(
+  name: AdvisorName,
+  question: string,
+  context?: string,
+  provenance: Provenance = "neutral",
+): string {
   return [
     `You are ${name}, one advisor on a council of AI models. Answer independently; the other advisors cannot see your reply.`,
+    ...(provenance === "retained"
+      ? [
+          `You are a retained seat: you run under your operator's own subscription and may carry their context. ` +
+            `Answer as informed counsel — where operator-specific knowledge shapes your answer, say so.`,
+        ]
+      : []),
     ``,
     `Question: ${question}`,
     ...(context ? [``, `Context: ${context}`] : []),
@@ -150,9 +176,11 @@ export function synthesisPrompt(
   outcomes: AdvisorOutcome[],
   context?: string,
 ): string {
+  const seatLabel = (o: AdvisorOutcome) =>
+    `${o.modelId}${o.provenance === "retained" ? " — retained seat, carries its operator's context" : ""}`;
   const positions = outcomes
     .filter((o) => o.status === "ok" && o.reply)
-    .map((o) => `### ${o.advisor} (${o.modelId})\n${JSON.stringify(o.reply, null, 2)}`)
+    .map((o) => `### ${o.advisor} (${seatLabel(o)})\n${JSON.stringify(o.reply, null, 2)}`)
     .join("\n\n");
   const casualties = outcomes
     .filter((o) => o.status !== "ok")
@@ -219,7 +247,7 @@ export function parseReply(raw: string): AdvisorReply | null {
 export async function runAdvisor(
   adapter: ProviderAdapter,
   name: AdvisorName,
-  model: ModelEntry,
+  model: Priced,
   prompt: string,
   cap: CostCap,
   opts: { maxTokens?: number; timeoutMs?: number } = {},
@@ -353,22 +381,32 @@ export async function conveneCouncil(
       runAdvisor(
         adapters[seat.provider],
         seat.name,
-        entryById(catalog, seat.modelId as string),
-        advisorPrompt(seat.name, input.question, input.context),
+        seat.provenance === "retained"
+          ? retainedPriced(seat.provider as RetainedProvider)
+          : entryById(catalog, seat.modelId as string),
+        advisorPrompt(seat.name, input.question, input.context, seat.provenance),
         cap,
-        { maxTokens: ADVISOR_TOKENS[plan.tier], timeoutMs: timeouts.advisorMs },
+        {
+          maxTokens: ADVISOR_TOKENS[plan.tier],
+          // CLI seats pay spawn/auth/queue overhead an API call does not; parallel
+          // fan-out makes the longer rope nearly free (see providers/retained.ts).
+          timeoutMs:
+            timeouts.advisorMs ??
+            (seat.provenance === "retained" ? RETAINED_TIMEOUT_MS : undefined),
+        },
       ),
     ),
   );
   const outcomes: AdvisorOutcome[] = settled.map((result, i) =>
     result.status === "fulfilled"
-      ? result.value
+      ? { ...result.value, provenance: seats[i].provenance }
       : {
           advisor: seats[i].name,
           modelId: seats[i].modelId as string,
           status: "error",
           detail: String(result.reason),
           costUsd: 0,
+          provenance: seats[i].provenance,
         },
   );
 

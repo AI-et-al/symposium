@@ -245,7 +245,7 @@ server.registerTool(
   {
     title: "Convene the council",
     description:
-      "Convene a council of AI advisors (Claude, GPT, Gemini, Grok, DeepSeek — plus opted-in " +
+      "Convene a council of AI advisors (Claude, GPT, Gemini, Grok, DeepSeek, Qwen — plus opted-in " +
       "retained seats held by the operator's own subscription CLIs) on one question. " +
       "Fans out to live advisors in parallel, surfaces disagreement verbatim in a DISSENT " +
       "section with per-advisor verdicts, synthesizes (or, for high/audited stakes, stops " +

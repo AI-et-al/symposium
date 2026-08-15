@@ -17,6 +17,7 @@ import { anthropicAdapter } from "./providers/anthropic.js";
 import { deepseekAdapter } from "./providers/deepseek.js";
 import { googleAdapter } from "./providers/google.js";
 import { openaiAdapter } from "./providers/openai.js";
+import { openrouterAdapter } from "./providers/openrouter.js";
 import {
   claudeCliAdapter,
   codexCliAdapter,
@@ -76,6 +77,7 @@ export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
   google: googleAdapter,
   xai: xaiAdapter,
   deepseek: deepseekAdapter,
+  openrouter: openrouterAdapter,
   "claude-cli": claudeCliAdapter,
   "codex-cli": codexCliAdapter,
   "gemini-cli": geminiCliAdapter,

@@ -30,6 +30,9 @@ const FIXTURE: Catalog = {
     { id: "ds-low", provider: "deepseek", tier: "low", in_per_mtok: 0.14, out_per_mtok: 0.28 },
     { id: "ds-med", provider: "deepseek", tier: "medium", in_per_mtok: 0.435, out_per_mtok: 0.87 },
     { id: "ds-high", provider: "deepseek", tier: "high", in_per_mtok: 0.435, out_per_mtok: 0.87 },
+    { id: "or-low", provider: "openrouter", tier: "low", in_per_mtok: 0.03, out_per_mtok: 0.13 },
+    { id: "or-med", provider: "openrouter", tier: "medium", in_per_mtok: 0.32, out_per_mtok: 1.28 },
+    { id: "or-high", provider: "openrouter", tier: "high", in_per_mtok: 1.5, out_per_mtok: 4.5 },
   ],
 };
 
@@ -70,7 +73,7 @@ describe("stakes → tier mapping", () => {
 });
 
 describe("cost estimate", () => {
-  it("matches the hand-computed value (low tier, 4 of 5 advisors keyed)", () => {
+  it("matches the hand-computed value (low tier, 4 of 6 advisors keyed)", () => {
     const p = plan({ stakes: "low" });
 
     const promptTokens = 100 + ADVISOR_PROMPT_OVERHEAD_TOKENS; // 500
@@ -95,6 +98,7 @@ describe("cost estimate", () => {
       "goog-low",
       "xai-low",
       null, // DeepSeek — no key
+      null, // Qwen — no key
     ]);
   });
 
@@ -199,6 +203,12 @@ describe("synthesizer selection", () => {
     expect(p.advisors.filter((a) => a.available)).toHaveLength(5);
     expect(p.synthModelId).toBe("ds-med");
   });
+
+  it("Qwen undercuts xAI as synthesizer once the OpenRouter key exists", () => {
+    const p = plan({ stakes: "low" }, { ...ALL_KEYS, OPENROUTER_API_KEY: "k6" });
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(5);
+    expect(p.synthModelId).toBe("or-med");
+  });
 });
 
 describe("live models.json", () => {
@@ -206,7 +216,7 @@ describe("live models.json", () => {
     const catalog = loadCatalog();
     expect(catalog.schema).toBe("symposium-models/v1");
     // One model per provider per tier — the estimator depends on this shape.
-    for (const provider of ["anthropic", "openai", "google", "xai", "deepseek"] as const) {
+    for (const provider of ["anthropic", "openai", "google", "xai", "deepseek", "openrouter"] as const) {
       for (const tier of ["low", "medium", "high"] as const) {
         expect(
           catalog.models.filter((m) => m.provider === provider && m.tier === tier),
@@ -220,7 +230,7 @@ describe("live models.json", () => {
 
 describe("retained seats (SYMPOSIUM_RETAINED_SEATS)", () => {
   it("plans no retained rows when the env var is unset", () => {
-    expect(plan().advisors).toHaveLength(5);
+    expect(plan().advisors).toHaveLength(6);
   });
 
   it("adds opted-in seats with retained provenance and no estimate impact", () => {
@@ -231,7 +241,7 @@ describe("retained seats (SYMPOSIUM_RETAINED_SEATS)", () => {
       FIXTURE,
       { claude: true, codex: true },
     );
-    expect(p.advisors).toHaveLength(7);
+    expect(p.advisors).toHaveLength(8);
     const cc = p.advisors.find((a) => a.name === "Claude Code")!;
     expect(cc.provenance).toBe("retained");
     expect(cc.available).toBe(true);
@@ -240,7 +250,7 @@ describe("retained seats (SYMPOSIUM_RETAINED_SEATS)", () => {
     // Flat tier: retained seats add exactly nothing to the metered estimate.
     expect(p.estimateUsd).toBeCloseTo(base.estimateUsd, 10);
     // Every neutral seat keeps neutral provenance.
-    expect(p.advisors.filter((a) => a.provenance === "neutral")).toHaveLength(5);
+    expect(p.advisors.filter((a) => a.provenance === "neutral")).toHaveLength(6);
   });
 
   it("marks an opted-in seat skipped when its CLI is not on PATH", () => {

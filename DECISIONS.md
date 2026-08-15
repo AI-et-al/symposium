@@ -326,3 +326,31 @@ record of its own deliberation marks its own seat's provenance.
   ruling (v1, high-stakes non-conclusion), the morning question (v1, $0.0077 floor).
 - `essays/your-ai-represents-you.md` — draft in the operator's voice, centerpiece is the
   strategy ledger; publishes nothing until the operator says so.
+
+## 2026-08-15 — Qwen seated as the sixth voice, via the OpenRouter adapter
+
+The operator supplied DeepSeek and OpenRouter keys; per the staged-admission policy,
+the council itself chose the sixth seat (ledger:
+`2026-08-15-1547-which-model-family-should-fill-the-openrouter-seat-seat-6-of.md`).
+Verdict: **Qwen (Alibaba), 4–0** — every speaking voice independently converged on it
+for diversity of training lineage, JSON-contract reliability, and price. Honest
+record: DeepSeek held a valid key but errored `402 Insufficient Balance`, so the
+fifth voice was absent and synthesis failed (DeepSeek was the elected synthesizer);
+the four positions stand unadjudicated but unanimous. Known consequence until the
+DeepSeek account is funded: the planner still selects DeepSeek as synthesizer
+(availability is key-based, not balance-based), so synthesis keeps failing loudly.
+
+- **Adapter** — `src/providers/openrouter.ts`: OpenAI-compatible chat completions at
+  `openrouter.ai/api/v1`, env `OPENROUTER_API_KEY`. Sends OpenRouter's unified
+  `reasoning: { enabled: false }` — Qwen ships hybrid reasoners, and thinking tokens
+  bill as output (the P4 lesson); models without a reasoning mode ignore the param.
+- **Catalog** — the Qwen 3.7 generation: the complete flash/plus/max ladder, all 1M
+  context, all non-thinking. Verified 2026-08-15 live against
+  `openrouter.ai/api/v1/models` (the billing source, not a marketing page):
+  `qwen/qwen3.7-flash` $0.03/$0.13 (low), `qwen/qwen3.7-plus` $0.32/$1.28 (medium),
+  `qwen/qwen3.7-max` $1.475/$4.425 (high). Qwen 3.8 exists but ships no flash/plus
+  tiers yet; `qwen3.6-max-preview` carries a preview tag. The catalog-wide
+  `verified` date stays 2026-08-10 — only the Qwen rows were checked today.
+- **Seat** — advisor name "Qwen", neutral provenance, chip 🔴/🟥. OpenRouter model
+  ids keep their `qwen/` slug prefix in the catalog and ledgers: the id names what
+  is billed, and OpenRouter is what bills.

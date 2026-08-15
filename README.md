@@ -1,7 +1,7 @@
 # 🏛️ Symposium
 
 Multi-model deliberation as an MCP server. One tool: convene a council of AI advisors —
-**Claude, GPT, Gemini, Grok, DeepSeek**, plus **retained seats** held by your own
+**Claude, GPT, Gemini, Grok, DeepSeek, Qwen** (via OpenRouter), plus **retained seats** held by your own
 subscription CLIs — on one question, surface their disagreement **verbatim**, and write
 every deliberation to a plain-Markdown ledger you own.
 
@@ -36,6 +36,7 @@ claude mcp add symposium \
   -e GEMINI_API_KEY=... \
   -e XAI_API_KEY=... \
   -e DEEPSEEK_API_KEY=... \
+  -e OPENROUTER_API_KEY=... \
   -- npx tsx src/server.ts
 ```
 

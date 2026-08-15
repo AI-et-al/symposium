@@ -252,6 +252,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []), // no XAI key in ALL_KEYS -> Grok never seated
       deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
       ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
@@ -279,6 +280,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
       ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
@@ -300,6 +302,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
       ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
@@ -321,6 +324,7 @@ describe("conveneCouncil", () => {
       google: fakeAdapter("google", [boom(), boom()]),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
       ...idleClis(),
     };
     const result = await conveneCouncil(input, plan(), FIXTURE, adapters);
@@ -362,6 +366,7 @@ describe("retained seats", () => {
       google: fakeAdapter("google", []),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
       ...idleClis(),
       "claude-cli": fakeAdapter("claude-cli", [VALID_REPLY]),
     };
@@ -427,6 +432,7 @@ describe("retained-only council (no neutral synthesizer)", () => {
       google: fakeAdapter("google", []),
       xai: fakeAdapter("xai", []),
       deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
       ...idleClis(),
       "claude-cli": fakeAdapter("claude-cli", [VALID_REPLY]),
       "codex-cli": fakeAdapter("codex-cli", [VALID_REPLY]),

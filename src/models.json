@@ -16,6 +16,9 @@
     { "id": "grok-4.5", "provider": "xai", "tier": "high", "in_per_mtok": 2.0, "out_per_mtok": 6.0 },
     { "id": "deepseek-v4-flash", "provider": "deepseek", "tier": "low", "in_per_mtok": 0.14, "out_per_mtok": 0.28 },
     { "id": "deepseek-v4-pro", "provider": "deepseek", "tier": "medium", "in_per_mtok": 0.435, "out_per_mtok": 0.87 },
-    { "id": "deepseek-v4-pro", "provider": "deepseek", "tier": "high", "in_per_mtok": 0.435, "out_per_mtok": 0.87 }
+    { "id": "deepseek-v4-pro", "provider": "deepseek", "tier": "high", "in_per_mtok": 0.435, "out_per_mtok": 0.87 },
+    { "id": "qwen/qwen3.7-flash", "provider": "openrouter", "tier": "low", "in_per_mtok": 0.03, "out_per_mtok": 0.13 },
+    { "id": "qwen/qwen3.7-plus", "provider": "openrouter", "tier": "medium", "in_per_mtok": 0.32, "out_per_mtok": 1.28 },
+    { "id": "qwen/qwen3.7-max", "provider": "openrouter", "tier": "high", "in_per_mtok": 1.475, "out_per_mtok": 4.425 }
   ]
 }

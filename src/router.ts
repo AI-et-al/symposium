@@ -6,7 +6,7 @@ import type { Stakes } from "./ledger.js";
 
 export type Tier = "low" | "medium" | "high";
 /** API-key providers with $/Mtok pricing in the catalog. */
-export type MeteredProvider = "anthropic" | "openai" | "google" | "xai" | "deepseek";
+export type MeteredProvider = "anthropic" | "openai" | "google" | "xai" | "deepseek" | "openrouter";
 /** Subscription-CLI providers — no API billing, flat $0 in the router (spec: retained seats). */
 export type RetainedProvider = "claude-cli" | "codex-cli" | "gemini-cli";
 export type Provider = MeteredProvider | RetainedProvider;
@@ -16,6 +16,7 @@ export type AdvisorName =
   | "Gemini"
   | "Grok"
   | "DeepSeek"
+  | "Qwen"
   | "Claude Code"
   | "Codex"
   | "Gemini CLI";
@@ -28,7 +29,7 @@ export type Provenance = "neutral" | "retained";
 
 const modelEntrySchema = z.object({
   id: z.string().min(1),
-  provider: z.enum(["anthropic", "openai", "google", "xai", "deepseek"]),
+  provider: z.enum(["anthropic", "openai", "google", "xai", "deepseek", "openrouter"]),
   tier: z.enum(["low", "medium", "high"]),
   in_per_mtok: z.number().positive(),
   out_per_mtok: z.number().positive(),
@@ -62,6 +63,7 @@ export const ADVISORS: ReadonlyArray<{ name: AdvisorName; provider: MeteredProvi
   { name: "Gemini", provider: "google", envKey: "GEMINI_API_KEY" },
   { name: "Grok", provider: "xai", envKey: "XAI_API_KEY" },
   { name: "DeepSeek", provider: "deepseek", envKey: "DEEPSEEK_API_KEY" },
+  { name: "Qwen", provider: "openrouter", envKey: "OPENROUTER_API_KEY" },
 ];
 
 /** Opt-in tokens for SYMPOSIUM_RETAINED_SEATS (comma/space separated). */

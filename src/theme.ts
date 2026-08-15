@@ -15,6 +15,7 @@ export const SEAT: Record<AdvisorName, { chip: string; fill: string }> = {
   Gemini: { chip: "🔵", fill: "🟦" },
   Grok: { chip: "⚫", fill: "⬛" },
   DeepSeek: { chip: "🟣", fill: "🟪" },
+  Qwen: { chip: "🔴", fill: "🟥" },
   "Claude Code": { chip: "🧡", fill: "🟧" },
   Codex: { chip: "💚", fill: "🟩" },
   "Gemini CLI": { chip: "💙", fill: "🟦" },

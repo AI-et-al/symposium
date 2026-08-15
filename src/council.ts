@@ -2,12 +2,12 @@ import { z } from "zod";
 import type { Stakes } from "./ledger.js";
 import {
   ADVISOR_TOKENS,
+  findPriced,
   MAX_SYNTH_TOKENS,
   retainedPriced,
   type AdvisorName,
   type Catalog,
   type CouncilPlan,
-  type ModelEntry,
   type Priced,
   type Provenance,
   type Provider,
@@ -365,11 +365,6 @@ export function splitSynthOutput(text: string, advisors: AdvisorName[]): SynthSe
   };
 }
 
-function entryById(catalog: Catalog, id: string): ModelEntry {
-  const entry = catalog.models.find((m) => m.id === id);
-  if (!entry) throw new Error(`model ${id} not found in catalog`);
-  return entry;
-}
 
 /**
  * Coarse lifecycle progress (the v2 streaming ruling: stage events only, never
@@ -402,7 +397,7 @@ export async function conveneCouncil(
         seat.name,
         seat.provenance === "retained"
           ? retainedPriced(seat.provider as RetainedProvider)
-          : entryById(catalog, seat.modelId as string),
+          : findPriced(catalog, seat.modelId as string),
         advisorPrompt(seat.name, input.question, input.context, seat.provenance),
         cap,
         {
@@ -480,7 +475,7 @@ export async function conveneCouncil(
     const failures: string[] = [];
     const synthPrompt = synthesisPrompt(input.question, input.stakes, outcomes, input.context);
     for (const candidateId of candidateIds) {
-      const synthModel = entryById(catalog, candidateId);
+      const synthModel = findPriced(catalog, candidateId);
       progress(
         failures.length === 0
           ? `synthesizing (${synthModel.id})`

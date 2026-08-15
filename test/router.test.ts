@@ -36,6 +36,18 @@ const FIXTURE: Catalog = {
   ],
 };
 
+// Every voice gets OpenRouter fallback rows mirroring its native fixture prices,
+// under distinguishable ids (orf-*), so one-key seating is hand-computable.
+FIXTURE.openrouter_fallbacks = FIXTURE.models
+  .filter((m) => m.provider !== "openrouter")
+  .map((m) => ({
+    voice: m.provider as Exclude<typeof m.provider, "openrouter">,
+    tier: m.tier,
+    id: `orf-${m.id}`,
+    in_per_mtok: m.in_per_mtok,
+    out_per_mtok: m.out_per_mtok,
+  }));
+
 const ALL_KEYS = {
   ANTHROPIC_API_KEY: "k1",
   OPENAI_API_KEY: "k2",
@@ -204,10 +216,14 @@ describe("synthesizer selection", () => {
     expect(p.synthModelId).toBe("ds-med");
   });
 
-  it("Qwen undercuts xAI as synthesizer once the OpenRouter key exists", () => {
+  it("with the OpenRouter key, the fallback-seated DeepSeek wins the synth election", () => {
     const p = plan({ stakes: "low" }, { ...ALL_KEYS, OPENROUTER_API_KEY: "k6" });
-    expect(p.advisors.filter((a) => a.available)).toHaveLength(5);
-    expect(p.synthModelId).toBe("or-med");
+    // ALL_KEYS lacks DEEPSEEK_API_KEY, so DeepSeek sits via OpenRouter -> 6 voices.
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(6);
+    // Its fallback pricing is also the cheapest synth call; Qwen still beats xAI.
+    expect(p.synthModelId).toBe("orf-ds-med");
+    expect(p.synthCandidateIds[0]).toBe("orf-ds-med");
+    expect(p.synthCandidateIds.indexOf("or-med")).toBeLessThan(p.synthCandidateIds.indexOf("xai-med"));
   });
 });
 
@@ -225,6 +241,15 @@ describe("live models.json", () => {
       }
     }
     expect(() => catalogSchema.parse({ schema: "wrong" })).toThrow();
+    // One-key council: every non-OpenRouter voice needs a fallback row at every tier.
+    for (const voice of ["anthropic", "openai", "google", "xai", "deepseek"] as const) {
+      for (const tier of ["low", "medium", "high"] as const) {
+        expect(
+          catalog.openrouter_fallbacks?.filter((f) => f.voice === voice && f.tier === tier),
+          `fallback ${voice}/${tier}`,
+        ).toHaveLength(1);
+      }
+    }
   });
 });
 
@@ -293,5 +318,66 @@ describe("retained seats (SYMPOSIUM_RETAINED_SEATS)", () => {
   it("mentions the retained opt-in in a quorum refusal", () => {
     const p = plan({}, { ANTHROPIC_API_KEY: "k1" } as typeof ALL_KEYS);
     expect(p.refusal).toContain("SYMPOSIUM_RETAINED_SEATS");
+  });
+});
+
+describe("one-key council (OpenRouter fallback seating)", () => {
+  const OR_ONLY = { OPENROUTER_API_KEY: "k" };
+
+  it("seats every voice with only OPENROUTER_API_KEY", () => {
+    const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      OR_ONLY,
+      FIXTURE,
+    );
+    expect(p.refusal).toBeUndefined();
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(6);
+
+    const claude = p.advisors.find((a) => a.name === "Claude")!;
+    expect(claude.provider).toBe("openrouter"); // billing/adapter provider
+    expect(claude.modelId).toBe("orf-anthro-med");
+    expect(claude.notice).toContain("via OpenRouter — no ANTHROPIC_API_KEY");
+
+    const qwen = p.advisors.find((a) => a.name === "Qwen")!;
+    expect(qwen.provider).toBe("openrouter");
+    expect(qwen.modelId).toBe("or-med"); // Qwen's own row, not a fallback
+    expect(qwen.notice).toBeUndefined();
+
+    expect(p.estimateUsd).toBeGreaterThan(0); // fallback seats are metered
+    expect(p.synthCandidateIds.length).toBeGreaterThan(0);
+  });
+
+  it("a native key always outranks the fallback for its own voice", () => {
+    const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      { ANTHROPIC_API_KEY: "k", ...OR_ONLY },
+      FIXTURE,
+    );
+    const claude = p.advisors.find((a) => a.name === "Claude")!;
+    expect(claude.provider).toBe("anthropic");
+    expect(claude.modelId).toBe("anthro-med");
+    expect(claude.notice).toBeUndefined();
+    const gpt = p.advisors.find((a) => a.name === "GPT")!;
+    expect(gpt.provider).toBe("openrouter");
+    expect(gpt.modelId).toBe("orf-oai-med");
+  });
+
+  it("without the OpenRouter key, unkeyed voices stay skipped (unchanged behavior)", () => {
+    const p = plan(); // ALL_KEYS carries no OPENROUTER_API_KEY
+    const ds = p.advisors.find((a) => a.name === "DeepSeek")!;
+    expect(ds.available).toBe(false);
+    expect(ds.notice).toContain("DEEPSEEK_API_KEY");
+  });
+
+  it("fallback seating never fires from a catalog without fallback rows", () => {
+    const bare: Catalog = { ...FIXTURE, openrouter_fallbacks: undefined };
+    const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      OR_ONLY,
+      bare,
+    );
+    // Only Qwen (openrouter-native) sits; one voice is below quorum.
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(1);
+    expect(p.refusal).toContain("at least 2");
   });
 });

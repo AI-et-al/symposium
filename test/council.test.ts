@@ -557,3 +557,55 @@ describe("progress events (coarse lifecycle only, per the v2 streaming ruling)",
     expect(messages.some((m) => m.includes("falling back to anthro-high"))).toBe(true);
   });
 });
+
+describe("one-key council (OpenRouter fallback seating)", () => {
+  const OR_FIXTURE: Catalog = {
+    ...FIXTURE,
+    models: [
+      ...FIXTURE.models,
+      { id: "or-low", provider: "openrouter", tier: "low", in_per_mtok: 0.03, out_per_mtok: 0.13 },
+      { id: "or-med", provider: "openrouter", tier: "medium", in_per_mtok: 0.32, out_per_mtok: 1.28 },
+      { id: "or-high", provider: "openrouter", tier: "high", in_per_mtok: 1.5, out_per_mtok: 4.5 },
+    ],
+    openrouter_fallbacks: (["anthropic", "openai", "google", "xai", "deepseek"] as const).flatMap(
+      (voice) =>
+        (["low", "medium", "high"] as const).map((tier) => ({
+          voice,
+          tier,
+          id: `orf-${voice}-${tier}`,
+          in_per_mtok: 1,
+          out_per_mtok: 1,
+        })),
+    ),
+  };
+
+  it("routes all six seats and the synthesis through the openrouter adapter", async () => {
+    const plan = planCouncil(
+      { question: "Q?", stakes: "medium", budget_usd: 999 },
+      { OPENROUTER_API_KEY: "k" },
+      OR_FIXTURE,
+    );
+    expect(plan.refusal).toBeUndefined();
+
+    const orFake = fakeAdapter("openrouter", [...Array(6).fill(VALID_REPLY), SYNTH_OUTPUT]);
+    const adapters = {
+      anthropic: fakeAdapter("anthropic", []),
+      openai: fakeAdapter("openai", []),
+      google: fakeAdapter("google", []),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      ...idleClis(),
+      openrouter: orFake,
+    };
+    const result = await conveneCouncil({ question: "Q?", stakes: "medium" }, plan, OR_FIXTURE, adapters);
+
+    expect(result.outcomes).toHaveLength(6);
+    expect(result.outcomes.every((o) => o.status === "ok")).toBe(true);
+    expect(orFake.calls).toHaveLength(7); // six advisors + one synthesis
+    expect(result.dissentAdjudicated).toBe(true);
+    // The record names what is billed: fallback seats carry their OpenRouter ids.
+    const ids = result.outcomes.map((o) => o.modelId);
+    expect(ids).toContain("orf-anthropic-medium");
+    expect(ids).toContain("or-med");
+  });
+});

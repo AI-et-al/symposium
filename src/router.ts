@@ -35,11 +35,27 @@ const modelEntrySchema = z.object({
   out_per_mtok: z.number().positive(),
 });
 
+/**
+ * One-key council: a voice whose native key is absent can sit via OpenRouter
+ * (the seat-election council's ruling — fallback only, never for keyed anchors).
+ * `voice` is the home provider the row substitutes for; billing is OpenRouter's.
+ */
+const fallbackEntrySchema = z.object({
+  voice: z.enum(["anthropic", "openai", "google", "xai", "deepseek"]),
+  tier: z.enum(["low", "medium", "high"]),
+  id: z.string().min(1),
+  in_per_mtok: z.number().positive(),
+  out_per_mtok: z.number().positive(),
+});
+
 export const catalogSchema = z.object({
   schema: z.literal("symposium-models/v1"),
   verified: z.string().min(1),
   models: z.array(modelEntrySchema).min(1),
+  openrouter_fallbacks: z.array(fallbackEntrySchema).optional(),
 });
+
+export type FallbackEntry = z.infer<typeof fallbackEntrySchema>;
 
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 export type Catalog = z.infer<typeof catalogSchema>;
@@ -189,42 +205,102 @@ function modelFor(catalog: Catalog, provider: MeteredProvider, tier: Tier): Mode
   return entry;
 }
 
+/** A fallback row materialized as a billable entry — OpenRouter is what bills. */
+export function fallbackFor(
+  catalog: Catalog,
+  voice: MeteredProvider,
+  tier: Tier,
+): ModelEntry | null {
+  const row = catalog.openrouter_fallbacks?.find((f) => f.voice === voice && f.tier === tier);
+  return row
+    ? {
+        id: row.id,
+        provider: "openrouter",
+        tier: row.tier,
+        in_per_mtok: row.in_per_mtok,
+        out_per_mtok: row.out_per_mtok,
+      }
+    : null;
+}
+
+/** A voice is fallback-eligible only with rows at every tier — the budget walk changes tiers. */
+export function hasCompleteFallback(catalog: Catalog, voice: MeteredProvider): boolean {
+  return (["low", "medium", "high"] as const).every((t) => fallbackFor(catalog, voice, t) !== null);
+}
+
+/** Resolves any billable id — catalog models or OpenRouter fallback rows. */
+export function findPriced(catalog: Catalog, id: string): ModelEntry {
+  const native = catalog.models.find((m) => m.id === id);
+  if (native) return native;
+  const row = catalog.openrouter_fallbacks?.find((f) => f.id === id);
+  if (row)
+    return {
+      id: row.id,
+      provider: "openrouter",
+      tier: row.tier,
+      in_per_mtok: row.in_per_mtok,
+      out_per_mtok: row.out_per_mtok,
+    };
+  throw new Error(`model ${id} not found in catalog`);
+}
+
 function callCost(model: ModelEntry, promptTokens: number, maxOutputTokens: number): number {
   return (promptTokens / 1e6) * model.in_per_mtok + (maxOutputTokens / 1e6) * model.out_per_mtok;
 }
 
 interface TierEstimate {
   estimateUsd: number;
-  advisorModels: Map<MeteredProvider, ModelEntry>;
+  advisorModels: Map<AdvisorName, ModelEntry>;
   synthModel: ModelEntry | null;
   /** All synth candidates, cheapest first — the council falls back down this list. */
   synthCandidates: ModelEntry[];
 }
 
+/** How a metered seat sits: on its own key, or routed via OpenRouter (no native key). */
+interface SeatSpec {
+  name: AdvisorName;
+  voice: MeteredProvider;
+  mode: "native" | "fallback";
+}
+
+function seatEntry(catalog: Catalog, seat: SeatSpec, tier: Tier): ModelEntry | null {
+  return seat.mode === "native"
+    ? modelFor(catalog, seat.voice, tier)
+    : fallbackFor(catalog, seat.voice, tier);
+}
+
 function estimateTier(
   catalog: Catalog,
   tier: Tier,
-  availableProviders: MeteredProvider[],
+  seats: SeatSpec[],
   questionTokens: number,
 ): TierEstimate {
   const advisorPromptTokens = questionTokens + ADVISOR_PROMPT_OVERHEAD_TOKENS;
-  const advisorModels = new Map<MeteredProvider, ModelEntry>();
+  const advisorModels = new Map<AdvisorName, ModelEntry>();
   let total = 0;
-  for (const provider of availableProviders) {
-    const model = modelFor(catalog, provider, tier);
-    advisorModels.set(provider, model);
+  for (const seat of seats) {
+    const model = seatEntry(catalog, seat, tier);
+    if (!model) continue;
+    advisorModels.set(seat.name, model);
     total += callCost(model, advisorPromptTokens, ADVISOR_TOKENS[tier]);
   }
 
   const synthPromptTokens =
-    availableProviders.length * ADVISOR_TOKENS[tier] + questionTokens + SYNTH_PROMPT_OVERHEAD_TOKENS;
-  const synthCandidates = catalog.models
-    .filter((m) => m.tier === SYNTH_TIER[tier] && availableProviders.includes(m.provider))
-    .sort(
-      (a, b) =>
-        callCost(a, synthPromptTokens, MAX_SYNTH_TOKENS) -
-        callCost(b, synthPromptTokens, MAX_SYNTH_TOKENS),
-    );
+    advisorModels.size * ADVISOR_TOKENS[tier] + questionTokens + SYNTH_PROMPT_OVERHEAD_TOKENS;
+  const seen = new Set<string>();
+  const synthCandidates: ModelEntry[] = [];
+  for (const seat of seats) {
+    const m = seatEntry(catalog, seat, SYNTH_TIER[tier]);
+    if (m && !seen.has(m.id)) {
+      seen.add(m.id);
+      synthCandidates.push(m);
+    }
+  }
+  synthCandidates.sort(
+    (a, b) =>
+      callCost(a, synthPromptTokens, MAX_SYNTH_TOKENS) -
+      callCost(b, synthPromptTokens, MAX_SYNTH_TOKENS),
+  );
   const synthModel = synthCandidates[0] ?? null;
   if (synthModel) total += callCost(synthModel, synthPromptTokens, MAX_SYNTH_TOKENS);
 
@@ -246,15 +322,33 @@ export function planCouncil(
   const budgetUsd = input.budget_usd ?? DEFAULT_BUDGET_USD[input.stakes];
   const questionTokens = estimateTokens(input.question + (input.context ?? ""));
 
+  const orKeyed = Boolean(env.OPENROUTER_API_KEY);
+  const seats: SeatSpec[] = [];
   const neutralAdvisors: AdvisorPlan[] = ADVISORS.map(({ name, provider, envKey }) => {
-    const available = Boolean(env[envKey]);
+    if (env[envKey]) {
+      seats.push({ name, voice: provider, mode: "native" });
+      return { name, provider, provenance: "neutral" as const, available: true, modelId: null };
+    }
+    // One key, full council: a voice without its native key sits via OpenRouter —
+    // fallback only, never for keyed anchors (the seat-election council's ruling).
+    if (orKeyed && provider !== "openrouter" && hasCompleteFallback(catalog, provider)) {
+      seats.push({ name, voice: provider, mode: "fallback" });
+      return {
+        name,
+        provider: "openrouter" as const,
+        provenance: "neutral" as const,
+        available: true,
+        modelId: null,
+        notice: `via OpenRouter — no ${envKey} set`,
+      };
+    }
     return {
       name,
       provider,
       provenance: "neutral" as const,
-      available,
+      available: false,
       modelId: null,
-      ...(available ? {} : { notice: `skipped — no ${envKey} set` }),
+      notice: `skipped — no ${envKey} set`,
     };
   });
 
@@ -277,14 +371,11 @@ export function planCouncil(
   );
 
   const advisors = [...neutralAdvisors, ...retainedAdvisors];
-  const availableProviders = neutralAdvisors
-    .filter((a) => a.available)
-    .map((a) => a.provider) as MeteredProvider[];
 
   // Walk down from the requested tier until the estimate fits the budget.
   // Retained seats are flat $0 in the estimate and neither downgrade nor refuse.
   let tier = requestedTier;
-  let estimate = estimateTier(catalog, tier, availableProviders, questionTokens);
+  let estimate = estimateTier(catalog, tier, seats, questionTokens);
   let refusal: string | undefined;
   while (estimate.estimateUsd > budgetUsd) {
     const below = TIER_BELOW[tier];
@@ -295,12 +386,11 @@ export function planCouncil(
       break;
     }
     tier = below;
-    estimate = estimateTier(catalog, tier, availableProviders, questionTokens);
+    estimate = estimateTier(catalog, tier, seats, questionTokens);
   }
 
   for (const advisor of neutralAdvisors) {
-    if (advisor.available)
-      advisor.modelId = estimate.advisorModels.get(advisor.provider as MeteredProvider)?.id ?? null;
+    if (advisor.available) advisor.modelId = estimate.advisorModels.get(advisor.name)?.id ?? null;
   }
 
   // A council of one is a monologue: require >= 2 seats (spec §3); retained seats count.

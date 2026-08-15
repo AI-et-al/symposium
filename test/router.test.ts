@@ -217,3 +217,71 @@ describe("live models.json", () => {
     expect(() => catalogSchema.parse({ schema: "wrong" })).toThrow();
   });
 });
+
+describe("retained seats (SYMPOSIUM_RETAINED_SEATS)", () => {
+  it("plans no retained rows when the env var is unset", () => {
+    expect(plan().advisors).toHaveLength(5);
+  });
+
+  it("adds opted-in seats with retained provenance and no estimate impact", () => {
+    const base = plan({ stakes: "low" });
+    const p = planCouncil(
+      { question: QUESTION, stakes: "low", budget_usd: BIG_BUDGET },
+      { ...ALL_KEYS, SYMPOSIUM_RETAINED_SEATS: "claude, codex" },
+      FIXTURE,
+      { claude: true, codex: true },
+    );
+    expect(p.advisors).toHaveLength(7);
+    const cc = p.advisors.find((a) => a.name === "Claude Code")!;
+    expect(cc.provenance).toBe("retained");
+    expect(cc.available).toBe(true);
+    expect(cc.modelId).toBe("claude-code");
+    expect(p.advisors.find((a) => a.name === "Codex")?.modelId).toBe("codex");
+    // Flat tier: retained seats add exactly nothing to the metered estimate.
+    expect(p.estimateUsd).toBeCloseTo(base.estimateUsd, 10);
+    // Every neutral seat keeps neutral provenance.
+    expect(p.advisors.filter((a) => a.provenance === "neutral")).toHaveLength(5);
+  });
+
+  it("marks an opted-in seat skipped when its CLI is not on PATH", () => {
+    const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      { ...ALL_KEYS, SYMPOSIUM_RETAINED_SEATS: "gemini" },
+      FIXTURE,
+      {}, // gemini never detected
+    );
+    const seat = p.advisors.find((a) => a.name === "Gemini CLI")!;
+    expect(seat.available).toBe(false);
+    expect(seat.modelId).toBeNull();
+    expect(seat.notice).toContain("gemini CLI not found on PATH");
+    expect(p.refusal).toBeUndefined(); // four keyed advisors still hold quorum
+  });
+
+  it("counts retained seats toward the >= 2 quorum", () => {
+    const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      { ANTHROPIC_API_KEY: "k1", SYMPOSIUM_RETAINED_SEATS: "claude" },
+      FIXTURE,
+      { claude: true },
+    );
+    expect(p.refusal).toBeUndefined();
+    expect(p.advisors.filter((a) => a.available)).toHaveLength(2);
+  });
+
+  it("surfaces unknown tokens as plan notices without refusing", () => {
+    const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      { ...ALL_KEYS, SYMPOSIUM_RETAINED_SEATS: "claude,oracle" },
+      FIXTURE,
+      { claude: true },
+    );
+    expect(p.refusal).toBeUndefined();
+    expect(p.notices).toHaveLength(1);
+    expect(p.notices[0]).toContain('"oracle"');
+  });
+
+  it("mentions the retained opt-in in a quorum refusal", () => {
+    const p = plan({}, { ANTHROPIC_API_KEY: "k1" } as typeof ALL_KEYS);
+    expect(p.refusal).toContain("SYMPOSIUM_RETAINED_SEATS");
+  });
+});

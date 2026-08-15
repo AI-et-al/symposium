@@ -5,8 +5,26 @@ import { z } from "zod";
 import type { Stakes } from "./ledger.js";
 
 export type Tier = "low" | "medium" | "high";
-export type Provider = "anthropic" | "openai" | "google" | "xai" | "deepseek";
-export type AdvisorName = "Claude" | "GPT" | "Gemini" | "Grok" | "DeepSeek";
+/** API-key providers with $/Mtok pricing in the catalog. */
+export type MeteredProvider = "anthropic" | "openai" | "google" | "xai" | "deepseek";
+/** Subscription-CLI providers — no API billing, flat $0 in the router (spec: retained seats). */
+export type RetainedProvider = "claude-cli" | "codex-cli" | "gemini-cli";
+export type Provider = MeteredProvider | RetainedProvider;
+export type AdvisorName =
+  | "Claude"
+  | "GPT"
+  | "Gemini"
+  | "Grok"
+  | "DeepSeek"
+  | "Claude Code"
+  | "Codex"
+  | "Gemini CLI";
+/**
+ * Seat provenance (ledger schema v3): `retained` = an official subscription CLI carrying
+ * its human's context — informed-but-interested counsel; `neutral` = a cold API seat.
+ * Provenance discloses, it does not rank.
+ */
+export type Provenance = "neutral" | "retained";
 
 const modelEntrySchema = z.object({
   id: z.string().min(1),
@@ -25,19 +43,70 @@ export const catalogSchema = z.object({
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 export type Catalog = z.infer<typeof catalogSchema>;
 
+/** The minimum a seat needs for cost accounting; retained seats price at 0/0. */
+export interface Priced {
+  id: string;
+  in_per_mtok: number;
+  out_per_mtok: number;
+}
+
 /** Loads and validates src/models.json; throws on a malformed catalog (fail fast at startup). */
 export function loadCatalog(): Catalog {
   const path = join(dirname(fileURLToPath(import.meta.url)), "models.json");
   return catalogSchema.parse(JSON.parse(readFileSync(path, "utf8")));
 }
 
-export const ADVISORS: ReadonlyArray<{ name: AdvisorName; provider: Provider; envKey: string }> = [
+export const ADVISORS: ReadonlyArray<{ name: AdvisorName; provider: MeteredProvider; envKey: string }> = [
   { name: "Claude", provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
   { name: "GPT", provider: "openai", envKey: "OPENAI_API_KEY" },
   { name: "Gemini", provider: "google", envKey: "GEMINI_API_KEY" },
   { name: "Grok", provider: "xai", envKey: "XAI_API_KEY" },
   { name: "DeepSeek", provider: "deepseek", envKey: "DEEPSEEK_API_KEY" },
 ];
+
+/** Opt-in tokens for SYMPOSIUM_RETAINED_SEATS (comma/space separated). */
+export type RetainedToken = "claude" | "codex" | "gemini";
+
+export interface RetainedSeatSpec {
+  token: RetainedToken;
+  name: AdvisorName;
+  provider: RetainedProvider;
+  /** The binary invoked as a subprocess; the seat skips when it is not on PATH. */
+  command: string;
+  /** The id recorded in ledgers and plans in place of a model id. */
+  cliId: string;
+}
+
+export const RETAINED_SEATS: ReadonlyArray<RetainedSeatSpec> = [
+  { token: "claude", name: "Claude Code", provider: "claude-cli", command: "claude", cliId: "claude-code" },
+  { token: "codex", name: "Codex", provider: "codex-cli", command: "codex", cliId: "codex" },
+  { token: "gemini", name: "Gemini CLI", provider: "gemini-cli", command: "gemini", cliId: "gemini-cli" },
+];
+
+/** Flat pricing for a retained seat: no API billing. NOT "zero cost" — quotas and ToS are real. */
+export function retainedPriced(provider: RetainedProvider): Priced {
+  const seat = RETAINED_SEATS.find((s) => s.provider === provider);
+  if (!seat) throw new Error(`no retained seat for provider ${provider}`);
+  return { id: seat.cliId, in_per_mtok: 0, out_per_mtok: 0 };
+}
+
+export function parseRetainedTokens(raw: string | undefined): {
+  tokens: RetainedToken[];
+  unknown: string[];
+} {
+  if (!raw) return { tokens: [], unknown: [] };
+  const known = new Set<string>(RETAINED_SEATS.map((s) => s.token));
+  const tokens: RetainedToken[] = [];
+  const unknown: string[] = [];
+  for (const part of raw.split(/[,\s]+/).map((p) => p.trim().toLowerCase()).filter(Boolean)) {
+    if (known.has(part)) {
+      if (!tokens.includes(part as RetainedToken)) tokens.push(part as RetainedToken);
+    } else {
+      unknown.push(part);
+    }
+  }
+  return { tokens, unknown };
+}
 
 /**
  * Max output tokens per advisor, by tier. Frontier models spend output tokens on
@@ -90,8 +159,9 @@ export interface PlanInput {
 export interface AdvisorPlan {
   name: AdvisorName;
   provider: Provider;
+  provenance: Provenance;
   available: boolean;
-  /** Selected model id when available; null when the advisor is skipped. */
+  /** Selected model id (or CLI id for retained seats) when available; null when skipped. */
   modelId: string | null;
   notice?: string;
 }
@@ -104,10 +174,12 @@ export interface CouncilPlan {
   synthModelId: string | null;
   estimateUsd: number;
   budgetUsd: number;
+  /** Plan-level warnings (e.g. unknown retained seat tokens); empty when clean. */
+  notices: string[];
   refusal?: string;
 }
 
-function modelFor(catalog: Catalog, provider: Provider, tier: Tier): ModelEntry {
+function modelFor(catalog: Catalog, provider: MeteredProvider, tier: Tier): ModelEntry {
   const entry = catalog.models.find((m) => m.provider === provider && m.tier === tier);
   if (!entry) throw new Error(`models.json has no entry for provider=${provider} tier=${tier}`);
   return entry;
@@ -119,18 +191,18 @@ function callCost(model: ModelEntry, promptTokens: number, maxOutputTokens: numb
 
 interface TierEstimate {
   estimateUsd: number;
-  advisorModels: Map<Provider, ModelEntry>;
+  advisorModels: Map<MeteredProvider, ModelEntry>;
   synthModel: ModelEntry | null;
 }
 
 function estimateTier(
   catalog: Catalog,
   tier: Tier,
-  availableProviders: Provider[],
+  availableProviders: MeteredProvider[],
   questionTokens: number,
 ): TierEstimate {
   const advisorPromptTokens = questionTokens + ADVISOR_PROMPT_OVERHEAD_TOKENS;
-  const advisorModels = new Map<Provider, ModelEntry>();
+  const advisorModels = new Map<MeteredProvider, ModelEntry>();
   let total = 0;
   for (const provider of availableProviders) {
     const model = modelFor(catalog, provider, tier);
@@ -166,24 +238,50 @@ export function planCouncil(
   input: PlanInput,
   env: Record<string, string | undefined>,
   catalog: Catalog,
+  /** Which opted-in retained CLIs were actually found on PATH (detected by the caller). */
+  cliAvailable: Partial<Record<RetainedToken, boolean>> = {},
 ): CouncilPlan {
   const requestedTier = STAKES_TIER[input.stakes];
   const budgetUsd = input.budget_usd ?? DEFAULT_BUDGET_USD[input.stakes];
   const questionTokens = estimateTokens(input.question + (input.context ?? ""));
 
-  const advisors: AdvisorPlan[] = ADVISORS.map(({ name, provider, envKey }) => {
+  const neutralAdvisors: AdvisorPlan[] = ADVISORS.map(({ name, provider, envKey }) => {
     const available = Boolean(env[envKey]);
     return {
       name,
       provider,
+      provenance: "neutral" as const,
       available,
       modelId: null,
       ...(available ? {} : { notice: `skipped — no ${envKey} set` }),
     };
   });
-  const availableProviders = advisors.filter((a) => a.available).map((a) => a.provider);
+
+  // Retained seats join only by explicit opt-in — a subscription CLI is never invoked unasked.
+  const { tokens: retainedTokens, unknown } = parseRetainedTokens(env.SYMPOSIUM_RETAINED_SEATS);
+  const retainedAdvisors: AdvisorPlan[] = retainedTokens.map((token) => {
+    const seat = RETAINED_SEATS.find((s) => s.token === token)!;
+    const available = cliAvailable[token] === true;
+    return {
+      name: seat.name,
+      provider: seat.provider,
+      provenance: "retained" as const,
+      available,
+      modelId: available ? seat.cliId : null,
+      ...(available ? {} : { notice: `skipped — ${seat.command} CLI not found on PATH` }),
+    };
+  });
+  const notices = unknown.map(
+    (u) => `unknown retained seat token "${u}" ignored (known: claude, codex, gemini)`,
+  );
+
+  const advisors = [...neutralAdvisors, ...retainedAdvisors];
+  const availableProviders = neutralAdvisors
+    .filter((a) => a.available)
+    .map((a) => a.provider) as MeteredProvider[];
 
   // Walk down from the requested tier until the estimate fits the budget.
+  // Retained seats are flat $0 in the estimate and neither downgrade nor refuse.
   let tier = requestedTier;
   let estimate = estimateTier(catalog, tier, availableProviders, questionTokens);
   let refusal: string | undefined;
@@ -199,16 +297,19 @@ export function planCouncil(
     estimate = estimateTier(catalog, tier, availableProviders, questionTokens);
   }
 
-  for (const advisor of advisors) {
-    if (advisor.available) advisor.modelId = estimate.advisorModels.get(advisor.provider)?.id ?? null;
+  for (const advisor of neutralAdvisors) {
+    if (advisor.available)
+      advisor.modelId = estimate.advisorModels.get(advisor.provider as MeteredProvider)?.id ?? null;
   }
 
-  // A council of one is a monologue: require >= 2 advisors (spec §3).
-  if (availableProviders.length < 2) {
+  // A council of one is a monologue: require >= 2 seats (spec §3); retained seats count.
+  const availableSeats = advisors.filter((a) => a.available).length;
+  if (availableSeats < 2) {
     const missing = ADVISORS.filter(({ envKey }) => !env[envKey]).map(({ envKey }) => envKey);
     refusal =
-      `only ${availableProviders.length} advisor(s) available; the council requires at least 2. ` +
-      `Missing keys: ${missing.join(", ")}`;
+      `only ${availableSeats} advisor(s) available; the council requires at least 2. ` +
+      `Missing keys: ${missing.join(", ")}. ` +
+      `Retained seats can also be opted in via SYMPOSIUM_RETAINED_SEATS (claude, codex, gemini)`;
   }
 
   return {
@@ -219,6 +320,7 @@ export function planCouncil(
     synthModelId: estimate.synthModel?.id ?? null,
     estimateUsd: estimate.estimateUsd,
     budgetUsd,
+    notices,
     ...(refusal ? { refusal: `Council refused: ${refusal}.` } : {}),
   };
 }

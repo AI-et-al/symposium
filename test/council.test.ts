@@ -509,3 +509,51 @@ describe("synthesizer fallback", () => {
     expect(result.synthesis).toContain("boom-o");
   });
 });
+
+describe("progress events (coarse lifecycle only, per the v2 streaming ruling)", () => {
+  it("emits convening, per-seat, synthesis, and adjournment stages", async () => {
+    const adapters = {
+      anthropic: fakeAdapter("anthropic", [VALID_REPLY]),
+      openai: fakeAdapter("openai", [VALID_REPLY]),
+      google: fakeAdapter("google", [VALID_REPLY, SYNTH_OUTPUT]),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
+      ...idleClis(),
+    };
+    const events: Array<{ message: string; progress: number; total: number }> = [];
+    const plan = planCouncil({ question: "Q?", stakes: "medium", budget_usd: 999 }, ALL_KEYS, FIXTURE);
+    await conveneCouncil({ question: "Q?", stakes: "medium" }, plan, FIXTURE, adapters, {
+      onProgress: (message, progress, total) => events.push({ message, progress, total }),
+    });
+
+    // 1 convening + 3 seats + 1 synthesizing + 1 adjournment = 6 coarse events, total 4 stages.
+    expect(events).toHaveLength(6);
+    expect(events[0].message).toContain("convening 3 voices");
+    expect(events.every((e) => e.total === 4)).toBe(true);
+    expect(events.filter((e) => e.message.includes("spoke")).length).toBe(3);
+    expect(events.at(-2)?.message).toContain("synthesizing");
+    expect(events.at(-1)?.message).toContain("writing the ledger");
+    expect(events.at(-1)?.progress).toBe(4);
+  });
+
+  it("reports failures and fallback in the stream", async () => {
+    const adapters = {
+      anthropic: fakeAdapter("anthropic", [VALID_REPLY, SYNTH_OUTPUT]),
+      openai: fakeAdapter("openai", ["garbage", "garbage again"]),
+      google: fakeAdapter("google", [VALID_REPLY, new Error("402")]),
+      xai: fakeAdapter("xai", []),
+      deepseek: fakeAdapter("deepseek", []),
+      openrouter: fakeAdapter("openrouter", []),
+      ...idleClis(),
+    };
+    const messages: string[] = [];
+    const plan = planCouncil({ question: "Q?", stakes: "medium", budget_usd: 999 }, ALL_KEYS, FIXTURE);
+    await conveneCouncil({ question: "Q?", stakes: "medium" }, plan, FIXTURE, adapters, {
+      onProgress: (message) => messages.push(message),
+    });
+
+    expect(messages.some((m) => m.includes("GPT returned malformed output"))).toBe(true);
+    expect(messages.some((m) => m.includes("falling back to anthro-high"))).toBe(true);
+  });
+});

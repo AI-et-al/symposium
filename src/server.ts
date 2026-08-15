@@ -265,8 +265,23 @@ server.registerTool(
       dry_run: z.boolean().optional(),
     },
   },
-  async ({ question, context, stakes, budget_usd, dry_run }) => {
+  async ({ question, context, stakes, budget_usd, dry_run }, extra) => {
     const started = Date.now();
+
+    // Coarse lifecycle progress only when the client asked for it (per the v2
+    // streaming ruling: stage events, never token streaming; result stays atomic).
+    const progressToken = extra._meta?.progressToken;
+    const onProgress =
+      progressToken === undefined
+        ? undefined
+        : (message: string, progress: number, total: number) => {
+            void extra
+              .sendNotification({
+                method: "notifications/progress",
+                params: { progressToken, progress, total, message },
+              })
+              .catch(() => {}); // a dropped notification must never sink a convening
+          };
 
     const plan = planCouncil(
       { question, context, stakes: stakes as Stakes, budget_usd },
@@ -307,6 +322,8 @@ server.registerTool(
       { question, context, stakes: stakes as Stakes },
       plan,
       catalog,
+      undefined,
+      { onProgress },
     );
 
     const skippedSeats: AdvisorPosition[] = plan.advisors

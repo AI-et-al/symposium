@@ -371,16 +371,29 @@ function entryById(catalog: Catalog, id: string): ModelEntry {
   return entry;
 }
 
+/**
+ * Coarse lifecycle progress (the v2 streaming ruling: stage events only, never
+ * token streaming; the final result and the ledger write stay atomic).
+ */
+export type ProgressFn = (message: string, progress: number, total: number) => void;
+
 /** Fan out to all available advisors, then synthesize. Pre-flight gating already happened in the router. */
 export async function conveneCouncil(
   input: { question: string; context?: string; stakes: Stakes },
   plan: CouncilPlan,
   catalog: Catalog,
   adapters: Record<Provider, ProviderAdapter> = DEFAULT_ADAPTERS,
-  timeouts: { advisorMs?: number; synthMs?: number } = {},
+  opts: { advisorMs?: number; synthMs?: number; onProgress?: ProgressFn } = {},
 ): Promise<CouncilResult> {
+  const timeouts = opts;
   const seats = plan.advisors.filter((a) => a.available && a.modelId);
   const cap: CostCap = { capUsd: plan.budgetUsd, spentUsd: 0 };
+
+  // Total stages: one per seat plus the synthesis stage.
+  const totalStages = seats.length + 1;
+  let doneStages = 0;
+  const progress = (message: string) => opts.onProgress?.(message, doneStages, totalStages);
+  progress(`convening ${seats.length} voices (tier ${plan.tier})`);
 
   const settled = await Promise.allSettled(
     seats.map((seat) =>
@@ -400,7 +413,15 @@ export async function conveneCouncil(
             timeouts.advisorMs ??
             (seat.provenance === "retained" ? RETAINED_TIMEOUT_MS : undefined),
         },
-      ),
+      ).then((outcome) => {
+        doneStages++;
+        progress(
+          outcome.status === "ok"
+            ? `${seat.name} spoke (confidence ${outcome.reply?.confidence.toFixed(2) ?? "?"})`
+            : `${seat.name} ${outcome.status === "malformed" ? "returned malformed output" : "errored"}`,
+        );
+        return outcome;
+      }),
     ),
   );
   const outcomes: AdvisorOutcome[] = settled.map((result, i) =>
@@ -427,9 +448,11 @@ export async function conveneCouncil(
 
   const okCount = outcomes.filter((o) => o.status === "ok").length;
   if (okCount === 0) {
+    progress("every advisor failed — no synthesis");
     dissent = "*No positions returned — every advisor failed; nothing to dissent from.*";
     synthesis = "No synthesis possible: the council returned no valid positions.";
   } else if (!plan.synthModelId) {
+    progress("no neutral synthesizer — positions preserved unadjudicated");
     // Reachable since v0.7: a retained-only council has positions but no neutral
     // synthesizer (retained seats do not adjudicate). The record must say who spoke.
     dissent = "*No synthesizer was available — no neutral API seat holds a key; dissent not adjudicated.*";
@@ -440,6 +463,7 @@ export async function conveneCouncil(
   } else if (cap.spentUsd >= cap.capUsd) {
     // Hard cap enforced against ACTUAL usage (spec §3): advisors already returned are
     // kept and recorded; the remaining call (synthesis) is aborted.
+    progress("budget cap breached — synthesis aborted");
     capBreached = true;
     dissent = "*Synthesis aborted — budget cap breached mid-flight; no dissent extraction performed.*";
     synthesis =
@@ -457,6 +481,11 @@ export async function conveneCouncil(
     const synthPrompt = synthesisPrompt(input.question, input.stakes, outcomes, input.context);
     for (const candidateId of candidateIds) {
       const synthModel = entryById(catalog, candidateId);
+      progress(
+        failures.length === 0
+          ? `synthesizing (${synthModel.id})`
+          : `synthesizer failed — falling back to ${synthModel.id}`,
+      );
       const completion = await withTimeout(
         adapters[synthModel.provider].complete(synthModel.id, synthPrompt, MAX_SYNTH_TOKENS, {
           json: false,
@@ -494,6 +523,8 @@ export async function conveneCouncil(
       synthesis = `SYNTHESIS FAILED after ${failures.length} attempt(s) — ${failures.join("; ")}. Advisor positions above are preserved.`;
     }
   }
+  doneStages = totalStages;
+  progress(dissentAdjudicated ? "adjudicated — writing the ledger" : "adjourning — writing the ledger");
 
   const totalCostUsd = outcomes.reduce((sum, o) => sum + o.costUsd, 0) + synthCostUsd;
   return {

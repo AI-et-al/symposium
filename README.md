@@ -27,25 +27,33 @@ in code.
 
 ## Install
 
+**One key seats the full council.** With just an OpenRouter key, every voice that
+lacks its own key sits via OpenRouter — same models, slug-prefixed ids naming what is
+billed, disclosed in every record:
+
 ```sh
 git clone https://github.com/AI-et-al/symposium && cd symposium && npm install
 
 claude mcp add symposium \
-  -e ANTHROPIC_API_KEY=... \
-  -e OPENAI_API_KEY=... \
-  -e GEMINI_API_KEY=... \
-  -e XAI_API_KEY=... \
-  -e DEEPSEEK_API_KEY=... \
   -e OPENROUTER_API_KEY=... \
   -- npx tsx src/server.ts
 ```
 
-Any missing key simply leaves that seat empty with a notice. The council runs with **2+
-voices** and refuses below that. No database, no accounts, no telemetry — if a provider
-disappears, the council loses one voice and keeps working.
+Native keys, when you have them, always outrank the fallback for their own voice —
+add any of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`,
+`DEEPSEEK_API_KEY` and that seat goes direct. With no OpenRouter key at all, only
+natively-keyed seats sit. Any missing seat is simply empty with a notice; the council
+runs with **2+ voices** and refuses below that. No database, no accounts, no
+telemetry — if a provider disappears, the council loses one voice and keeps working.
+
+> ⚠ If your OpenRouter account restricts **Allowed Providers** (Settings → Privacy),
+> each seated voice's upstream must be on the allowlist or its calls 404 — recorded
+> honestly as a failed seat, but avoidable.
 
 Once published to npm (pending the release-gate checklist in `DECISIONS.md`), the
 server will also run as `npx -y symposium` — the package is already built for it.
+Long convenings report **coarse progress** (each seat as it speaks, synthesis, the
+ledger write) to MCP clients that request it; the result and the ledger stay atomic.
 
 ## Retained seats (v0.7)
 

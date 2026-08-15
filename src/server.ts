@@ -242,7 +242,7 @@ function renderCouncil(
   return lines.join("\n");
 }
 
-const server = new McpServer({ name: "symposium", version: "0.7.0" });
+const server = new McpServer({ name: "symposium", version: "0.8.0" });
 
 server.registerTool(
   "convene_council",

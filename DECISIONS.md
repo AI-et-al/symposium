@@ -327,6 +327,67 @@ record of its own deliberation marks its own seat's provenance.
 - `essays/your-ai-represents-you.md` — draft in the operator's voice, centerpiece is the
   strategy ledger; publishes nothing until the operator says so.
 
+## 2026-08-15 — v0.8.0: the adoption council's gates, executed
+
+The adoption convening (ledger `2026-08-15-1524-…`) ruled niche-yes/mass-no and
+named the frictions between try-once and durable use. The operator's directive:
+"execute every change this system needs until it would reliably meet all of
+council's requirements." Shipped, in order:
+
+- **Synthesizer fallback** — the plan carries synth candidates ranked cheapest-
+  first; the council walks the list until one adjudicates, disclosing any
+  substitution in the response and recording the seat that actually spoke in the
+  ledger frontmatter. Directly heals the recorded DeepSeek-402 trap (keyed but
+  unfunded account elected synthesizer, every synthesis failing). All-fail still
+  preserves positions loudly, per the P4 isolation rule.
+- **Coarse progress events** — the exact shape two councils sanctioned (the v2
+  streaming ruling, reaffirmed by the adoption convening): MCP progress
+  notifications carrying stage messages — convening, each seat as it speaks or
+  fails, synthesis with any fallback, adjournment. Only when the client sends a
+  progressToken; never token streaming; result and ledger writes stay atomic; a
+  dropped notification never sinks a convening.
+- **One key, full council** — the seat-election council's fallback ruling
+  implemented: a voice without its native key sits via OpenRouter when
+  `OPENROUTER_API_KEY` is set (never for keyed anchors). `models.json` gains
+  `openrouter_fallbacks`, fifteen rows verified live against
+  `openrouter.ai/api/v1/models` 2026-08-15. Fallback seats are metered into the
+  estimate, disclosed with a per-seat notice, and are synth candidates. Observed
+  while verifying, flagged for the next full catalog re-check: OpenRouter bills
+  `gemini-3.6-flash` at $0.75/$3.75 (half the native catalog's verified price)
+  and `claude-sonnet-5` at its $2/$10 intro price — native prices may have
+  drifted since 2026-08-10. Operator-side caveat, documented in the README: an
+  OpenRouter account with an Allowed Providers allowlist must include each
+  seated voice's upstream, or its calls 404 as (honestly recorded) failed seats.
+- **README install rewritten around the one-key path**; version 0.8.0.
+
+Deliberately not done, per the same convening's own warnings: no token
+streaming, no web UI, no hosted mode, no best-of-n routing, no agent loops.
+Mass-no is not failure of the correctness bet; the format and skill chase mass,
+the server serves the niche frictionlessly.
+
+## 2026-08-15 — Gate evidence: convenings that changed real decisions
+
+The npm convening's release gate asked whether the tool ever changed an
+outcome. The ledgers answer on the record:
+
+- **The roadmap itself** — the strategy convening (`2026-08-12-2014-…`,
+  specimen 1) set the three-motion sequencing and reversed the operator's
+  "zero marginal cost" framing; both corrections shipped verbatim into spec
+  and README.
+- **Ledger schema v2** — the verdicts block exists because the council ruled
+  it should (`2026-08-10-1343-…`); implemented in v0.6.0.
+- **Two seat elections** — DeepSeek (`2026-08-06-1956-…`, `2026-08-10-1345-…`)
+  and Qwen (`2026-08-15-1547-…`), both implemented as ruled, including the
+  native-first/OpenRouter-fallback architecture this release completes.
+- **The audited-mode honesty note** — the council refused to bless its own
+  product's compliance claim (`2026-08-10-1351-…`, specimen 3); the README
+  says so in its own Honesty notes.
+- **Motion 3's shape** — format-first, ruled by a retained-only council
+  (`2026-08-15-1511-…`), built as ruled.
+
+The remaining npm-publish gate items are outward acts and belong to the
+operator: the publish itself, and any announce.
+
 ## 2026-08-15 — Qwen seated as the sixth voice, via the OpenRouter adapter
 
 The operator supplied DeepSeek and OpenRouter keys; per the staged-admission policy,

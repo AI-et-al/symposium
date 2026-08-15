@@ -1,6 +1,6 @@
 {
   "name": "symposium",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Multi-model deliberation as an MCP server. Convene Claude, GPT, Gemini, Grok, and DeepSeek — plus retained seats held by your own subscription CLIs — on one question; surface disagreement verbatim; write every deliberation to a plain-Markdown ledger you own.",
   "license": "AGPL-3.0-only",
   "type": "module",

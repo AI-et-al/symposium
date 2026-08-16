@@ -1,5 +1,7 @@
 node_modules/
 ledger/
 dist/
+essays/
 *.log
 .env
+.DS_Store

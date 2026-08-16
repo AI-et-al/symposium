@@ -327,6 +327,20 @@ record of its own deliberation marks its own seat's provenance.
 - `essays/your-ai-represents-you.md` — draft in the operator's voice, centerpiece is the
   strategy ledger; publishes nothing until the operator says so.
 
+## 2026-08-16 — essays/ is local-only; drafts never enter version control
+
+The operator's directive, before first push of the Motion-1-and-later work:
+nothing publicly accessible that could come back to bite; peace of mind is the
+requirement. Executed: `essays/` excised from the entire unpushed history (it
+appeared in exactly one never-pushed commit; ancestors and hashes of pushed
+history untouched, fast-forward preserved), the directory gitignored so drafts
+cannot re-enter tracking, and the npm `files` allowlist tightened from `docs`
+to explicit paths (`docs/janus.md`, `docs/council-theme.md`) so untracked
+working files can never ride a tarball — npm packs from the filesystem, not
+from git, and a staged announce kit was sitting in `docs/`. Where DECISIONS
+entries reference essay drafts, they describe local files by design. Drafts
+publish by deliberate copy, the same rule ledger specimens follow.
+
 ## 2026-08-16 — Lineage framing settled: indebted to llm-council, the inverse tool, no timeline claims
 
 The operator's directive, verbatim in spirit: remove anything that purports to

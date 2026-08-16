@@ -34,7 +34,8 @@
     "dist",
     "src",
     "spec",
-    "docs"
+    "docs/janus.md",
+    "docs/council-theme.md"
   ],
   "scripts": {
     "start": "tsx src/server.ts",

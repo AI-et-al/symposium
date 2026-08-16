@@ -18,22 +18,20 @@ from [its manifesto](https://github.com/AI-et-al/Janus/blob/main/MANIFESTO.md)
    dissent and stop with the questions only you can answer.
 
 **Kin and credit.** The spec's second principle is named the *Karpathy constraint*
-(every step small, bounded, observable; cost shown before it is spent), and Andrej
-Karpathy's [llm-council](https://github.com/karpathy/llm-council) explored the same
-instinct — several models on one question, a designated Chairman compiling the
-answers. We examined it directly before shipping this note (2026-08-15): the
-resemblance is the silhouette; the mechanisms differ at the core. llm-council's
-models review and *rank each other's anonymized answers*, and its Chairman compiles
-one best answer — it optimizes for the answer. Symposium's advisors answer
-independently and never see each other; the synthesis must preserve their
-disagreement verbatim, and at high stakes there is deliberately no answer at all —
-it optimizes for the record, with budgets enforced in code and a ledger file the
-human owns. [Janus](https://github.com/AI-et-al/Janus), this project's parent,
-already ordered its models to treat disagreement as "the most valuable information
-in the system" and named its incremental rule the *Karpathy Principle* — the debt
-is in the name. We claim kinship, not priority (dates, honestly, in
-[docs/janus.md](docs/janus.md)); the convergence reads to us as evidence the shape
-is right, and the influence and our gratitude are acknowledged gladly.
+(every step small, bounded, observable; cost shown before it is spent), and this
+project is gladly indebted to Andrej Karpathy's
+[llm-council](https://github.com/karpathy/llm-council): several models on one
+question, each reviewing the others' anonymized answers, a designated Chairman
+compiling the best of them into one final response. It's cool. It's also, by
+design, a machine for producing the answer — and watching answers get compiled is
+what convinced us the *other* tool should exist. Symposium is the deliberate
+inverse: advisors answer blind and never see each other, the synthesis must
+preserve their disagreement verbatim, and at high stakes there is no answer at
+all — the record is the product, with budgets enforced in code and a ledger file
+the human owns. [Janus](https://github.com/AI-et-al/Janus), this project's parent,
+had already named its incremental rule the *Karpathy Principle* — the debt is in
+the name, and if the inverse turns out to be valuable, much of the credit belongs
+upstream.
 
 ## Install
 

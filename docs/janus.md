@@ -3,9 +3,8 @@
 Symposium was extracted from [Janus](https://github.com/AI-et-al/Janus)
 (AI-et-al/Janus, MIT, public), a research platform for coordinating multiple LLMs
 and tool-using agents over long-horizon tasks. This note is the bridge between the
-two repos: what Janus was, what survived into Symposium, what was deliberately left
-behind, and the dates — stated honestly. A fuller chronicle may follow; this is the
-receipt, not the memoir.
+two repos: what Janus was, what survived into Symposium, and what was deliberately
+left behind. A fuller chronicle may follow; this is the receipt, not the memoir.
 
 ## What Janus was
 
@@ -54,14 +53,14 @@ injected into every Janus context:
 The retirement decision is the first line of [`DECISIONS.md`](../DECISIONS.md):
 platform retired, council + router extracted, thin-and-portable rationale.
 
-## Dates, honestly
+## On llm-council
 
-- karpathy/llm-council repo created **2025-11-22**.
-- Janus's public git history begins **2025-12-15**.
-- Symposium's first commit is **2026-08-06**.
-
-We claim kinship with llm-council, not priority over it. The ideas that define
-Symposium against it — dissent preserved rather than compiled away, a record the
-human owns, refusal to conclude at high stakes — are documented in Janus's own
-manifesto and README, whatever the calendar says about who typed first. Claims get
-receipts here; these are ours.
+Andrej Karpathy's [llm-council](https://github.com/karpathy/llm-council) is kin
+this lineage is gladly indebted to: several models on one question, anonymized
+peer review, a Chairman compiling one final answer. We make no claims about
+timelines and want none — the interesting relationship isn't chronological, it's
+structural. llm-council optimizes for the answer; the Janus-to-Symposium line
+optimizes for the record: dissent preserved rather than compiled away, a file the
+human owns, refusal to conclude at high stakes. A tool that compiles the argument
+away brilliantly is the clearest possible demonstration of why a tool that
+preserves it should also exist. That demonstration is the debt.

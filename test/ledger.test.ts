@@ -8,6 +8,7 @@ import {
   verifyLedger,
   writeLedger,
   type LedgerEntry,
+  defaultLedgerDir,
 } from "../src/ledger.js";
 
 const ENTRY: LedgerEntry = {
@@ -195,5 +196,18 @@ describe("writeLedger + verifyLedger hash chain", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("defaultLedgerDir", () => {
+  it("keeps a clone's records in <repo>/ledger", () => {
+    expect(defaultLedgerDir(join("/work", "symposium"), "/home/op")).toBe(
+      join("/work", "symposium", "ledger"),
+    );
+  });
+
+  it("sends an installed package's records to ~/symposium-ledger, never npm's cache", () => {
+    const npx = join("/home/op", ".npm", "_npx", "ab12", "node_modules", "@ai-et-al", "symposium");
+    expect(defaultLedgerDir(npx, "/home/op")).toBe(join("/home/op", "symposium-ledger"));
   });
 });

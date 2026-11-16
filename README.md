@@ -58,20 +58,24 @@ telemetry — if a provider disappears, the council loses one voice and keeps wo
 > each seated voice's upstream must be on the allowlist or its calls 404 — recorded
 > honestly as a failed seat, but avoidable.
 
-> ⚠ **Symposium is not on npm — install from this repository.** The `symposium-mcp`
-> package on the npm registry is an unrelated project by a different publisher (it
-> appeared 2026-11-13). Do not `npx` it expecting this server, and above all do not hand
-> it your API keys. Earlier revisions of this README carried an `npx -y symposium-mcp`
-> one-liner; it was written while that name was unclaimed and has been withdrawn.
-
-To use the council from every project rather than only inside this checkout, register
-it at user scope with absolute paths:
+Or skip the clone: the package is published as
+[`@ai-et-al/symposium`](https://www.npmjs.com/package/@ai-et-al/symposium). `--scope
+user` makes the council available from every project:
 
 ```sh
 claude mcp add symposium --scope user \
   -e OPENROUTER_API_KEY=... \
-  -- npx --prefix /path/to/symposium tsx /path/to/symposium/src/server.ts
+  -- npx -y @ai-et-al/symposium
 ```
+
+> ⚠ **The scope is the name.** `symposium-mcp` (no scope) on the npm registry is an
+> unrelated project by a different publisher; it appeared on 2026-11-13. Earlier
+> revisions of this README carried an `npx -y symposium-mcp` one-liner, written while
+> that name was unclaimed. Do not run it expecting this server, and above all do not
+> hand it your API keys.
+
+To run a clone from every project instead, register it with absolute paths:
+`-- npx --prefix /path/to/symposium tsx /path/to/symposium/src/server.ts`.
 
 Long convenings report **coarse progress** (each seat as it speaks, synthesis, the
 ledger write) to MCP clients that request it; the result and the ledger stay atomic.
@@ -131,9 +135,11 @@ return; a mid-flight breach aborts synthesis and preserves the positions already
 
 ## The ledger
 
-One Markdown file per convening in `ledger/` (or `SYMPOSIUM_LEDGER_DIR` — pointing it at
-a [Basic Memory](https://basicmemory.com) project is the intended deployment, not a
-special mode). Schema `symposium-ledger/v3`: frontmatter (date, stakes, mode, models,
+One Markdown file per convening, in `ledger/` for a clone or `~/symposium-ledger/` for
+the installed package — or wherever `SYMPOSIUM_LEDGER_DIR` says; pointing it at a
+[Basic Memory](https://basicmemory.com) project is the intended deployment, not a
+special mode. The server prints the directory on startup and every response ends with
+the path of the record it wrote. Schema `symposium-ledger/v3`: frontmatter (date, stakes, mode, models,
 cost, latency), verbatim positions with per-seat provenance and cost, the DISSENT
 section, a machine-readable per-advisor **verdicts** block (`adopt | reject | partial |
 abstain | open`), and the synthesis. Abridged from a real convening:

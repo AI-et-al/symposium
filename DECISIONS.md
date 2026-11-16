@@ -607,3 +607,24 @@ green throughout; every item below was found by checking the live world, not the
   against a $0.0261 estimate. The ninth, DeepSeek, returned `402 Insufficient Balance`
   — the account balance is $0.00, as it was in August. Not a code fault: fund it, or
   remove `DEEPSEEK_API_KEY` so the voice sits via OpenRouter.
+
+## 2026-11-16 — v0.9.2: published to npm as `@ai-et-al/symposium`
+
+The operator claimed the `@ai-et-al` scope the same afternoon (free npm organization
+`ai-et-al`, owner `dmcs414`) and gave the word to publish. This is the first release on
+the registry; the publish gate that had stood since the 2026-08-10 npm convening is
+closed by the operator's own act. The announce gate is untouched — no launch kit, no
+post.
+
+- **Ledger default for an installed package** (`src/ledger.ts`). The default was
+  `<package root>/ledger`, which for `npx` is a directory inside npm's cache — a place
+  npm is free to clear. A record the operator owns cannot live there. When the package
+  root sits under `node_modules` and `SYMPOSIUM_LEDGER_DIR` is unset, records now go to
+  `~/symposium-ledger/`; a clone still writes `<repo>/ledger`. The server names the
+  directory on startup.
+- **Install path restored, under the scope.** The README offers
+  `npx -y @ai-et-al/symposium` again and keeps the warning that unscoped
+  `symposium-mcp` is someone else's. A scope can only be published to by its members,
+  which is the property the unscoped name never had.
+- **Order of operations:** publish first, push second, so the public README never
+  again names a package that does not exist.

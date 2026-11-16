@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type Stakes = "low" | "medium" | "high" | "audited";
@@ -57,10 +58,22 @@ export interface LedgerVerification {
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** SYMPOSIUM_LEDGER_DIR wins; default is <repo>/ledger regardless of cwd. */
+/**
+ * Where the ledger goes when SYMPOSIUM_LEDGER_DIR is unset. A clone keeps its records
+ * in `<repo>/ledger`. An installed package (`npx`, `npm i -g`) lives under
+ * `node_modules` — inside npm's cache for npx, which npm may clear — so its records go
+ * to `~/symposium-ledger` instead: a ledger the operator owns cannot sit in a cache.
+ */
+export function defaultLedgerDir(root: string = packageRoot, home: string = homedir()): string {
+  return root.split(sep).includes("node_modules")
+    ? join(home, "symposium-ledger")
+    : join(root, "ledger");
+}
+
+/** SYMPOSIUM_LEDGER_DIR wins; otherwise `defaultLedgerDir()`, regardless of cwd. */
 export function ledgerDir(): string {
   const fromEnv = process.env.SYMPOSIUM_LEDGER_DIR;
-  return fromEnv ? resolve(fromEnv) : join(packageRoot, "ledger");
+  return fromEnv ? resolve(fromEnv) : defaultLedgerDir();
 }
 
 export function sha256Hex(text: string): string {

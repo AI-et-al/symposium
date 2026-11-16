@@ -9,7 +9,7 @@ import {
   type AdvisorOutcome,
   type CouncilResult,
 } from "./council.js";
-import { writeLedger, type AdvisorPosition, type Stakes } from "./ledger.js";
+import { ledgerDir, writeLedger, type AdvisorPosition, type Stakes } from "./ledger.js";
 import {
   loadCatalog,
   parseRetainedTokens,
@@ -375,4 +375,4 @@ server.registerTool(
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("symposium MCP server ready (stdio)");
+console.error(`symposium ${version} MCP server ready (stdio) — ledger: ${ledgerDir()}`);

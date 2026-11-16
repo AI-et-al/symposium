@@ -213,6 +213,7 @@ Real convenings, unedited, from this repository's own history:
 | [The wager](specimens/2026-08-10-1348-a-human-and-an-ai-agent-make-a-friendly-wager-if-at-any-poin.md) | v1 | Four voices in genuine philosophical dissent; the DISSENT section carrying an argument no single answer could |
 | [The audited-mode ruling](specimens/2026-08-10-1351-does-a-plain-markdown-ledger-with-frontmatter-schema-version.md) | v1 | High-stakes non-conclusion: the council refuses to adjudicate, returns four questions; two frontier seats malformed and recorded as such |
 | [The morning question](specimens/2026-08-10-1353-what-single-question-should-an-operator-ask-their-ai-council.md) | v1 | The floor: a low-stakes budget-tier council, $0.0077 and 19 seconds, dissent still structured and attributed |
+| [The retained-only council](specimens/2026-08-15-1511-should-symposium-s-openclaw-skill-teach-agents-to-write-conf.md) | v3 | A council seated entirely by the operator's own subscription CLIs (provenance `retained`, seats unmetered); no neutral synthesizer, so the honest NOT-ADJUDICATED state — and both seats disclosing how their operator's context does or does not shape their counsel |
 
 ---
 

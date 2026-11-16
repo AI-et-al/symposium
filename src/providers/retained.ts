@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { ADVISORS } from "../router.js";
 import type { ProviderAdapter } from "./types.js";
 
 /**
@@ -14,10 +15,35 @@ import type { ProviderAdapter } from "./types.js";
 export const RETAINED_TIMEOUT_MS = 180_000;
 
 /**
- * Answer-only mode for `claude -p` (flags verified against claude 2.1.223):
+ * Credentials a retained subprocess must never inherit. The server's own environment
+ * holds the metered API keys for the neutral seats, and the CLIs prefer a key over
+ * their subscription login when they see one — `claude -p` with ANTHROPIC_API_KEY set
+ * bills the Console key per token (verified against claude 2.1.325), which would make
+ * a "retained, unmetered" seat a metered one the ledger never priced. Stripping them
+ * holds the seat to principle 4 (first-party subscription auth) and keeps the keys
+ * out of reach of a CLI that is only supposed to answer.
+ */
+export const SCRUBBED_ENV_VARS: ReadonlyArray<string> = [
+  ...ADVISORS.map((a) => a.envKey),
+  "ANTHROPIC_AUTH_TOKEN",
+  "CODEX_API_KEY",
+  "GOOGLE_API_KEY",
+];
+
+/** The environment a retained CLI runs in: the server's, minus every metered credential. */
+export function retainedEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const name of SCRUBBED_ENV_VARS) delete env[name];
+  return env;
+}
+
+/**
+ * Answer-only mode for `claude -p` (flags verified against claude 2.1.325):
  * user-level settings only (the seat carries its human's context, not whatever
  * project the MCP client launched from), no MCP servers, no session files, and
- * every built-in tool denied.
+ * no built-in tools at all. `--tools ""` is an empty allowlist; the denylist it
+ * replaced (`--disallowedTools Bash,Edit,…`) went stale whenever the CLI grew a tool,
+ * and a user-level `auto` permission mode would have run the unlisted ones unasked.
  */
 export const CLAUDE_ANSWER_ONLY_ARGS: ReadonlyArray<string> = [
   "-p",
@@ -27,12 +53,12 @@ export const CLAUDE_ANSWER_ONLY_ARGS: ReadonlyArray<string> = [
   "user",
   "--strict-mcp-config",
   "--no-session-persistence",
-  "--disallowedTools",
-  "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task,Agent,Skill,NotebookEdit,TodoWrite",
+  "--tools",
+  "",
 ];
 
 /**
- * Answer-only mode for `codex exec` (flags verified against codex-cli 0.147.0):
+ * Answer-only mode for `codex exec` (flags verified against codex-cli 0.166.0):
  * read-only sandbox, no session persisted, prompt on stdin (`-`), and the clean
  * final message written to a temp file (`-o`) because stdout carries the transcript.
  */
@@ -73,8 +99,9 @@ export const AGY_ANSWER_ONLY_ARGS: ReadonlyArray<string> = [
 
 /**
  * Run one CLI to completion: prompt on stdin, stdout collected, child killed on
- * timeout so no subprocess outlives its convening. Defaults cwd to the home directory
- * (or an explicit ephemeral directory when workspace isolation requires it).
+ * timeout (or when the council aborts the seat) so no subprocess outlives its
+ * convening. Defaults cwd to the home directory (or an explicit ephemeral directory
+ * when workspace isolation requires it). The child never sees the metered API keys.
  */
 export function runCli(
   command: string,
@@ -82,23 +109,38 @@ export function runCli(
   prompt: string,
   timeoutMs: number = RETAINED_TIMEOUT_MS,
   cwd: string = homedir(),
+  signal?: AbortSignal,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, [...args], {
+      cwd,
+      env: retainedEnv(),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`${command} timed out after ${timeoutMs / 1000}s`));
     }, timeoutMs);
+    const onAbort = () => {
+      child.kill("SIGKILL");
+      reject(new Error(`${command} aborted by the council`));
+    };
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
+    const settle = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
     child.stdout.on("data", (d: Buffer) => (out += d));
     child.stderr.on("data", (d: Buffer) => (err += d));
     child.on("error", (e) => {
-      clearTimeout(timer);
+      settle();
       reject(e);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      settle();
       if (code === 0) resolve(out);
       else reject(new Error(`${command} exited with code ${code}: ${err.trim().slice(0, 400)}`));
     });
@@ -112,19 +154,33 @@ const ZERO_USAGE = { inputTokens: 0, outputTokens: 0 };
 
 export const claudeCliAdapter: ProviderAdapter = {
   provider: "claude-cli",
-  async complete(_modelId, prompt, _maxOutputTokens, _options) {
-    const text = await runCli("claude", CLAUDE_ANSWER_ONLY_ARGS, prompt);
+  async complete(_modelId, prompt, _maxOutputTokens, options) {
+    const text = await runCli(
+      "claude",
+      CLAUDE_ANSWER_ONLY_ARGS,
+      prompt,
+      RETAINED_TIMEOUT_MS,
+      homedir(),
+      options.signal,
+    );
     return { text: text.trim(), usage: ZERO_USAGE };
   },
 };
 
 export const codexCliAdapter: ProviderAdapter = {
   provider: "codex-cli",
-  async complete(_modelId, prompt, _maxOutputTokens, _options) {
+  async complete(_modelId, prompt, _maxOutputTokens, options) {
     const dir = mkdtempSync(join(tmpdir(), "symposium-codex-"));
     const lastMessageFile = join(dir, "last-message.txt");
     try {
-      const stdout = await runCli("codex", codexAnswerOnlyArgs(lastMessageFile), prompt);
+      const stdout = await runCli(
+        "codex",
+        codexAnswerOnlyArgs(lastMessageFile),
+        prompt,
+        RETAINED_TIMEOUT_MS,
+        homedir(),
+        options.signal,
+      );
       let text: string;
       try {
         text = readFileSync(lastMessageFile, "utf8");
@@ -140,10 +196,17 @@ export const codexCliAdapter: ProviderAdapter = {
 
 export const agyCliAdapter: ProviderAdapter = {
   provider: "agy-cli",
-  async complete(_modelId, prompt, _maxOutputTokens, _options) {
+  async complete(_modelId, prompt, _maxOutputTokens, options) {
     const dir = mkdtempSync(join(tmpdir(), "symposium-agy-"));
     try {
-      const text = await runCli("agy", AGY_ANSWER_ONLY_ARGS, prompt, RETAINED_TIMEOUT_MS, dir);
+      const text = await runCli(
+        "agy",
+        AGY_ANSWER_ONLY_ARGS,
+        prompt,
+        RETAINED_TIMEOUT_MS,
+        dir,
+        options.signal,
+      );
       return { text: text.trim(), usage: ZERO_USAGE };
     } finally {
       rmSync(dir, { recursive: true, force: true });

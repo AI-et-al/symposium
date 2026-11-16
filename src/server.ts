@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -242,7 +243,13 @@ function renderCouncil(
   return lines.join("\n");
 }
 
-const server = new McpServer({ name: "symposium", version: "0.9.0" });
+// One source of truth for the version: package.json sits one level above both
+// src/server.ts (tsx) and dist/server.js (the published bin).
+const { version } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { version: string };
+
+const server = new McpServer({ name: "symposium", version });
 
 server.registerTool(
   "convene_council",

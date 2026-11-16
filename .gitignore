@@ -6,3 +6,6 @@ essays/
 repomix-output.*
 .env
 .DS_Store
+# Per-operator agent config — the Codex one carries API keys in plaintext.
+.claude/
+.codex/

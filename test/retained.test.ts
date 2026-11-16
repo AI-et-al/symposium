@@ -6,19 +6,22 @@ import {
   AGY_ANSWER_ONLY_ARGS,
   CLAUDE_ANSWER_ONLY_ARGS,
   codexAnswerOnlyArgs,
+  retainedEnv,
   runCli,
+  SCRUBBED_ENV_VARS,
 } from "../src/providers/retained.js";
 
 describe("answer-only argument sets", () => {
-  it("claude runs print-mode with user settings only and every tool denied", () => {
+  it("claude runs print-mode with user settings only and an empty tool allowlist", () => {
     expect(CLAUDE_ANSWER_ONLY_ARGS).toContain("-p");
     expect(CLAUDE_ANSWER_ONLY_ARGS).toContain("--strict-mcp-config");
     expect(CLAUDE_ANSWER_ONLY_ARGS).toContain("--no-session-persistence");
     const settingIdx = CLAUDE_ANSWER_ONLY_ARGS.indexOf("--setting-sources");
     expect(CLAUDE_ANSWER_ONLY_ARGS[settingIdx + 1]).toBe("user");
-    const denyIdx = CLAUDE_ANSWER_ONLY_ARGS.indexOf("--disallowedTools");
-    expect(CLAUDE_ANSWER_ONLY_ARGS[denyIdx + 1]).toContain("Bash");
-    expect(CLAUDE_ANSWER_ONLY_ARGS[denyIdx + 1]).toContain("Write");
+    // An allowlist of nothing, not a denylist that goes stale as the CLI grows tools.
+    const toolsIdx = CLAUDE_ANSWER_ONLY_ARGS.indexOf("--tools");
+    expect(CLAUDE_ANSWER_ONLY_ARGS[toolsIdx + 1]).toBe("");
+    expect(CLAUDE_ANSWER_ONLY_ARGS).not.toContain("--disallowedTools");
   });
 
   it("codex runs exec in a read-only sandbox, ephemeral, reading stdin", () => {
@@ -71,7 +74,48 @@ describe("runCli", () => {
     ).rejects.toThrow(/timed out/);
   });
 
+  it("kills the child when the council aborts the seat", async () => {
+    const controller = new AbortController();
+    const run = runCli("node", ["-e", "setTimeout(() => {}, 60000)"], "", 30_000, undefined, controller.signal);
+    controller.abort();
+    await expect(run).rejects.toThrow(/aborted/);
+  });
+
+  it("never hands a metered API key to the subprocess", async () => {
+    const saved = { ...process.env };
+    try {
+      for (const name of SCRUBBED_ENV_VARS) process.env[name] = "secret-" + name;
+      process.env.SYMPOSIUM_TEST_PASSTHROUGH = "kept";
+      const script = "process.stdout.write(JSON.stringify(Object.keys(process.env)))";
+      const seen = JSON.parse(await runCli("node", ["-e", script], "")) as string[];
+      expect(seen.filter((name) => SCRUBBED_ENV_VARS.includes(name))).toEqual([]);
+      expect(seen).toContain("SYMPOSIUM_TEST_PASSTHROUGH"); // everything else passes through
+    } finally {
+      for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+      Object.assign(process.env, saved);
+    }
+  });
+
   it("rejects when the binary does not exist", async () => {
     await expect(runCli("symposium-no-such-cli-xyz", [], "")).rejects.toThrow();
+  });
+});
+
+describe("retainedEnv", () => {
+  it("strips every metered credential and keeps the rest", () => {
+    const env = retainedEnv({
+      PATH: "/usr/bin",
+      HOME: "/home/op",
+      ANTHROPIC_API_KEY: "a",
+      ANTHROPIC_AUTH_TOKEN: "b",
+      OPENAI_API_KEY: "c",
+      CODEX_API_KEY: "d",
+      GEMINI_API_KEY: "e",
+      GOOGLE_API_KEY: "f",
+      XAI_API_KEY: "g",
+      DEEPSEEK_API_KEY: "h",
+      OPENROUTER_API_KEY: "i",
+    });
+    expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/op" });
   });
 });

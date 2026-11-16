@@ -58,12 +58,19 @@ telemetry — if a provider disappears, the council loses one voice and keeps wo
 > each seated voice's upstream must be on the allowlist or its calls 404 — recorded
 > honestly as a failed seat, but avoidable.
 
-Or skip the clone entirely once you have keys in hand — the package publishes as
-[`symposium-mcp`](https://www.npmjs.com/package/symposium-mcp) (plain `symposium`
-was already taken on the registry; the server and its one tool keep their name):
+> ⚠ **Symposium is not on npm — install from this repository.** The `symposium-mcp`
+> package on the npm registry is an unrelated project by a different publisher (it
+> appeared 2026-11-13). Do not `npx` it expecting this server, and above all do not hand
+> it your API keys. Earlier revisions of this README carried an `npx -y symposium-mcp`
+> one-liner; it was written while that name was unclaimed and has been withdrawn.
+
+To use the council from every project rather than only inside this checkout, register
+it at user scope with absolute paths:
 
 ```sh
-claude mcp add symposium -e OPENROUTER_API_KEY=... -- npx -y symposium-mcp
+claude mcp add symposium --scope user \
+  -e OPENROUTER_API_KEY=... \
+  -- npx --prefix /path/to/symposium tsx /path/to/symposium/src/server.ts
 ```
 
 Long convenings report **coarse progress** (each seat as it speaks, synthesis, the
@@ -174,7 +181,9 @@ the council; a retained-only council ruled format-first, and the ledgers are the
 
 - **`audited` mode adds tamper-evident SHA-256 hash chaining, not external signing.** Each
   v0.9+ ledger entry records `prev_sha256` and `content_sha256` (`verifyLedger()` checks
-  the chain), which detects accidental or post-hoc edits inside a directory — but anyone
+  the chain by following the links, so parallel and same-minute convenings verify in
+  whatever order they were written), which detects accidental or post-hoc edits inside a
+  directory, and a fork if two writers raced — but anyone
   with write access to the directory could rewrite the chain from genesis. Still not a
   third-party compliance audit trail without external anchoring or signatures.
 - **Model prices drift.** `src/models.json` records the verification date; estimates are
@@ -187,6 +196,15 @@ the council; a retained-only council ruled format-first, and the ledgers are the
   is not "zero cost" (quota, ToS, opportunity cost — the council itself corrected this
   framing). The no-tools containment uses each CLI's own flags (`claude`, `codex`, `agy`),
   verified against the versions recorded in `DECISIONS.md`.
+- **A retained seat never sees your API keys.** The metered keys in the server's
+  environment are stripped before a subscription CLI is spawned. Otherwise `claude -p`
+  would silently prefer `ANTHROPIC_API_KEY` over your login and bill per token while the
+  ledger recorded the seat as unmetered. A CLI that authenticates *only* by an
+  environment key cannot hold a retained seat — that is a metered seat, and belongs on
+  the API side of the council.
+- **A timed-out call is cancelled, not abandoned.** When a seat or the synthesizer
+  exceeds its time limit the request is aborted (and a CLI subprocess killed), so nothing
+  keeps running and billing after the record has marked it failed.
 
 ## Non-goals (v1)
 

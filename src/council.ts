@@ -98,10 +98,19 @@ export interface CostCap {
   spentUsd: number;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+/**
+ * Races `run` against the clock. On timeout the signal handed to `run` is aborted, so
+ * the provider call (or CLI subprocess) is cancelled rather than left to finish — and
+ * bill — after the council has already recorded the seat as failed.
+ */
+function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
-    promise.then(
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms / 1000}s`));
+      controller.abort();
+    }, ms);
+    run(controller.signal).then(
       (value) => {
         clearTimeout(timer);
         resolve(value);
@@ -278,7 +287,7 @@ export async function runAdvisor(
 
   try {
     let completion = await withTimeout(
-      adapter.complete(model.id, prompt, maxTokens, { json: true }),
+      (signal) => adapter.complete(model.id, prompt, maxTokens, { json: true, signal }),
       timeoutMs,
       `${name} advisor call`,
     );
@@ -296,7 +305,7 @@ export async function runAdvisor(
         };
       }
       completion = await withTimeout(
-        adapter.complete(model.id, prompt + RETRY_SUFFIX, maxTokens, { json: true }),
+        (signal) => adapter.complete(model.id, prompt + RETRY_SUFFIX, maxTokens, { json: true, signal }),
         timeoutMs,
         `${name} retry call`,
       );
@@ -462,7 +471,7 @@ export async function conveneCouncil(
     dissent = "*No synthesizer was available — no neutral API seat holds a key; dissent not adjudicated.*";
     synthesis =
       "No synthesis: the council convened without a neutral synthesizer (retained seats " +
-      "do not adjudicate dissent in v0.7). The positions above are preserved verbatim; " +
+      "do not adjudicate dissent). The positions above are preserved verbatim; " +
       "the reader is the synthesizer.";
   } else if (cap.spentUsd >= cap.capUsd) {
     // Hard cap enforced against ACTUAL usage (spec §3): advisors already returned are
@@ -491,9 +500,11 @@ export async function conveneCouncil(
           : `synthesizer failed — falling back to ${synthModel.id}`,
       );
       const completion = await withTimeout(
-        adapters[synthModel.provider].complete(synthModel.id, synthPrompt, MAX_SYNTH_TOKENS, {
-          json: false,
-        }),
+        (signal) =>
+          adapters[synthModel.provider].complete(synthModel.id, synthPrompt, MAX_SYNTH_TOKENS, {
+            json: false,
+            signal,
+          }),
         timeouts.synthMs ?? SYNTH_TIMEOUT_MS,
         "synthesis call",
       ).then(

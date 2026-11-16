@@ -38,6 +38,7 @@ export const googleAdapter: ProviderAdapter = {
       contents: prompt,
       config: {
         maxOutputTokens,
+        ...(options.signal ? { abortSignal: options.signal } : {}),
         // Native JSON schema + low thinking cap for the advisor contract; synthesis wants markdown.
         ...(options.json
           ? {

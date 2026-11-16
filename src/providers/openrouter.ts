@@ -6,7 +6,7 @@ let client: OpenAI | undefined;
 /** OpenRouter is OpenAI-compatible: same SDK, chat-completions endpoint, OpenRouter base URL. */
 export const openrouterAdapter: ProviderAdapter = {
   provider: "openrouter",
-  async complete(modelId, prompt, maxOutputTokens, _options) {
+  async complete(modelId, prompt, maxOutputTokens, options) {
     client ??= new OpenAI({
       apiKey: process.env.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
@@ -20,7 +20,7 @@ export const openrouterAdapter: ProviderAdapter = {
       // tokens bill as output and would eat the JSON contract's budget (P4 gate).
       // Models without a reasoning mode ignore the parameter.
       reasoning: { enabled: false },
-    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, { signal: options.signal });
 
     return {
       text: response.choices[0]?.message?.content ?? "",

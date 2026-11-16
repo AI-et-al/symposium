@@ -5,7 +5,7 @@ let client: Anthropic | undefined;
 
 export const anthropicAdapter: ProviderAdapter = {
   provider: "anthropic",
-  async complete(modelId, prompt, maxOutputTokens, _options) {
+  async complete(modelId, prompt, maxOutputTokens, options) {
     client ??= new Anthropic(); // lazy: the server must boot without keys
 
     // Keep the whole output budget for the contract: on Sonnet 5 / Opus 5 thinking is
@@ -18,7 +18,7 @@ export const anthropicAdapter: ProviderAdapter = {
       max_tokens: maxOutputTokens,
       ...thinking,
       messages: [{ role: "user", content: prompt }],
-    });
+    }, { signal: options.signal });
 
     let text = "";
     for (const block of response.content) {

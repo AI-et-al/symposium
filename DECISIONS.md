@@ -526,3 +526,84 @@ replacement CLI:
   cleanly to `agy` (`Antigravity`).
 - **Dogfood hygiene** — removed premature `docs/announce-kit.md` and ignored
   `repomix-output.*` in `.gitignore`.
+
+## 2026-11-16 — v0.9.1: the npm name is someone else's; retained seats were billing the API key; catalog refresh
+
+A pre-use audit before the tool goes into daily service on a new project. Tests were
+green throughout; every item below was found by checking the live world, not the suite.
+
+- **`symposium-mcp` on npm is not ours.** An unrelated publisher claimed the name on
+  2026-11-13 (a meeting-space MCP server, four releases by the 16th). This repo never
+  published, but the public README told readers to run `npx -y symposium-mcp` with
+  `OPENROUTER_API_KEY` in the environment — i.e. to execute a stranger's package holding
+  their key. The one-liner is withdrawn and replaced with a warning; install is
+  clone-only until a name the project controls is published. The MCP server name
+  (`symposium`) and the tool (`convene_council`) are unchanged. Lesson recorded: an
+  install command for an unclaimed registry name is a standing invitation — publish a
+  placeholder or do not print the command.
+- **Retained seats inherited the metered keys** (`src/providers/retained.ts`). The
+  server's environment carries `ANTHROPIC_API_KEY` for the neutral Claude seat, and
+  `claude -p` prefers that key over the subscription login (verified live on claude
+  2.1.325: a bogus key in the environment produces `Invalid API key`, and the CLI warns
+  that the key "takes precedence over your claude.ai login"). So wherever both were
+  configured, the "retained — no API metering" Claude Code seat was billing the Console
+  key per token and the ledger recorded $0. `runCli` now spawns with `retainedEnv()`:
+  the server's environment minus every advisor key plus `ANTHROPIC_AUTH_TOKEN`,
+  `CODEX_API_KEY`, `GOOGLE_API_KEY`. Earlier ledgers that seat Claude Code alongside
+  a natively-keyed Claude under-report cost by that seat's tokens; they are not amended
+  (write-once), this entry is the correction.
+- **Claude answer-only mode is now an empty allowlist.** `--tools ""` replaces
+  `--disallowedTools <thirteen names>`. The denylist was verified against 2.1.223 and
+  the CLI has grown tools since; with a user-level `auto` permission mode the unlisted
+  ones would have run unprompted. Verified on 2.1.325: the seat reports no callable
+  tools. Codex flags re-checked against codex-cli 0.166.0, agy against 1.5.9 — unchanged.
+- **Timeouts abort** (`src/council.ts`, every adapter). `withTimeout` used to reject and
+  walk away; the provider call ran to completion and billed with no record, and a
+  shortened `advisorMs` left a CLI child alive. An `AbortSignal` now reaches each SDK
+  call and `runCli`.
+- **The hash chain is ordered by its links, not by filename** (`src/ledger.ts`).
+  Filenames carry the local minute a convening *started*. Three cases wrote a valid
+  chain that `verifyLedger()` then rejected: two questions in the same minute written
+  out of alphabetical order (this repo's own ledger has three convenings at
+  `2026-08-10-1343`), the `-2` collision suffix (which sorts *before* the unsuffixed
+  file), and a slow convening finishing after a later-started fast one. The head is now
+  the entry no other entry names as predecessor, and verification walks from genesis;
+  a fork (two writers racing on one directory) is reported as a fork. No chained ledger
+  had been written before this fix, so nothing on disk needs repair.
+- **Catalog refresh, verified 2026-11-16.** Ids against each provider's model-list
+  endpoint; prices against Anthropic's and xAI's own listings, the OpenAI, Google and
+  DeepSeek pricing pages, and `openrouter.ai/api/v1/models` for every OpenRouter row.
+  - `claude-sonnet-5` $3/$15 → **$2/$10** (the native row was simply wrong; the
+    OpenRouter row already said $2/$10).
+  - DeepSeek: `deepseek-v4-flash` is a retired legacy alias, now served and billed as
+    DeepSeek-V4.1-Flash — id → **`deepseek-flash`**. DeepSeek has introduced peak /
+    off-peak pricing (peak is double); the catalog holds one price per row, so it
+    records **peak**: flash $0.30/$1.20, `deepseek-v4-pro` $1.32/$3.96 (was $0.435/$0.87
+    — up to 4.5× under on output). Off-peak convenings over-record by half.
+  - OpenRouter fallbacks: `openai/gpt-5.6-luna` and `-terra` had been entered at half
+    price (the batch column) → $0.20/$1.20 and $2/$12. `deepseek/deepseek-v4-flash-0731`
+    → $0.06/$0.18; `deepseek/deepseek-v4-pro-0813` → $0.111/$4.44 (output had been 5×
+    under).
+  - **Deliberately left high:** `gpt-5.6-sol` is promotionally $4/$20 until 2026-11-30
+    and `gemini-3.6-flash` $0.75/$3.75 until 2026-12-31; both native rows keep the
+    post-promotion price ($5/$30, $1.50/$7.50), because an estimate that is too low is
+    the unsafe direction for a budget cap. The OpenRouter `gpt-5.6-sol` row keeps $5/$30
+    for the same reason; the OpenRouter `gemini-3.6-flash` row matches its billing
+    source today and will need raising on 2027-01-01.
+  - **Not changed — the operator's call:** every provider has shipped a newer
+    generation (Claude 5.5, GPT-6, Gemini 4, Grok 4.7, DeepSeek V4.1, Qwen 3.8). Who
+    sits on the council has always been decided by the operator or the council itself,
+    so the roster stands; only ids and prices that were wrong were touched.
+- **Packaging.** `package.json` is renamed from `symposium-mcp` to `@ai-et-al/symposium`
+  (`publishConfig.access: "public"`, matching the GitHub org; unpublished until the
+  operator claims the npm scope and signs off). `npm run build` now clears `dist/` first —
+  a stale `dist/src/` tree from an old `rootDir` was riding every tarball (51 files → 39).
+  The server reads its version from `package.json` instead of a second hard-coded string,
+  and `package-lock.json` (still stamped 0.8.0) agrees again. `.claude/` and `.codex/` are
+  gitignored: the project-level Codex config holds API keys in plaintext and sat
+  untracked, one `git add -A` from a public repository.
+- **Live verification.** One low-stakes convening on the working tree: nine seats
+  planned, eight spoke (all three retained seats included), Qwen adjudicated, $0.0067
+  against a $0.0261 estimate. The ninth, DeepSeek, returned `402 Insufficient Balance`
+  — the account balance is $0.00, as it was in August. Not a code fault: fund it, or
+  remove `DEEPSEEK_API_KEY` so the voice sits via OpenRouter.

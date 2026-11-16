@@ -124,6 +124,52 @@ describe("writeLedger + verifyLedger hash chain", () => {
     }
   });
 
+  it("follows links, not filenames: same-minute, collision-suffixed, and overlapping convenings verify", () => {
+    const dir = mkdtempSync(join(tmpdir(), "symposium-ledger-order-"));
+    try {
+      const minute = new Date("2026-11-16T15:30:00.000Z");
+      // Same minute, written in the opposite of filename order.
+      writeLedger({ ...ENTRY, date: minute, question: "Zebra?" }, dir);
+      writeLedger({ ...ENTRY, date: minute, question: "Apple?" }, dir);
+      // Same minute and same question: `-2` sorts BEFORE the unsuffixed file.
+      writeLedger({ ...ENTRY, date: minute, question: "Apple?" }, dir);
+      // A long convening that started earlier but was written last.
+      const last = writeLedger(
+        { ...ENTRY, date: new Date("2026-11-16T15:10:00.000Z"), question: "Slow?" },
+        dir,
+      );
+
+      const check = verifyLedger(dir);
+      expect(check.errors).toEqual([]);
+      expect(check.checked).toBe(4);
+      expect(check.headSha256).toBe(
+        /^content_sha256: ([0-9a-f]{64})$/m.exec(readFileSync(last, "utf8"))![1],
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a fork when two entries name the same predecessor", () => {
+    const dir = mkdtempSync(join(tmpdir(), "symposium-ledger-fork-"));
+    try {
+      const p1 = writeLedger({ ...ENTRY, date: new Date("2026-11-15T13:00:00.000Z"), question: "Root" }, dir);
+      const h1 = /^content_sha256: ([0-9a-f]{64})$/m.exec(readFileSync(p1, "utf8"))![1];
+      writeLedger({ ...ENTRY, date: new Date("2026-11-15T13:05:00.000Z"), question: "Left" }, dir);
+      // A second writer that read the head before "Left" landed.
+      writeFileSync(
+        join(dir, "2026-11-15-2300-right.md"),
+        renderLedger({ ...ENTRY, date: new Date("2026-11-15T13:06:00.000Z"), question: "Right" }, h1),
+        "utf8",
+      );
+      const forked = verifyLedger(dir);
+      expect(forked.valid).toBe(false);
+      expect(forked.errors.join("\n")).toContain("forked chain");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("skips pre-v0.9 unhashed files before the chain, but rejects unhashed files after", () => {
     const dir = mkdtempSync(join(tmpdir(), "symposium-ledger-legacy-"));
     try {

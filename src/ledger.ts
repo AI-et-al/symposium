@@ -158,19 +158,42 @@ prev_sha256: ${prevSha256}
   return `${headerPrefix}content_sha256: ${contentSha256}\n${headerSuffix}${body}`;
 }
 
+interface ChainRecord {
+  file: string;
+  raw: string;
+  prev?: string;
+  content?: string;
+}
+
+/** Reads the chain fields of every `.md` file in `dir`, in filename order. */
+function readChainRecords(dir: string): ChainRecord[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .sort()
+    .map((file) => {
+      const raw = readFileSync(join(dir, file), "utf8");
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(raw)?.[1] ?? "";
+      const prev = /^prev_sha256:\s*(\S+)\s*$/m.exec(fm)?.[1];
+      const content = /^content_sha256:\s*(\S+)\s*$/m.exec(fm)?.[1];
+      return { file, raw, ...(prev ? { prev } : {}), ...(content ? { content } : {}) };
+    });
+}
+
+/**
+ * The chain head: the hashed entry no other entry names as its predecessor. The chain
+ * is defined by its links, never by filename order — filenames carry the minute a
+ * convening STARTED, so parallel convenings, same-minute questions, and `-2` collision
+ * suffixes all sort differently from the order they were written in.
+ */
 function latestLedgerHash(dir: string): string {
   if (!existsSync(dir)) return GENESIS_SHA256;
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .sort();
-  for (let i = files.length - 1; i >= 0; i--) {
-    const raw = readFileSync(join(dir, files[i]), "utf8");
-    const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(raw)?.[1];
-    if (!fm) continue;
-    const match = /^content_sha256:\s*([0-9a-f]{64})\s*$/m.exec(fm);
-    if (match) return match[1];
-  }
-  return GENESIS_SHA256;
+  const hashed = readChainRecords(dir).filter((r) => r.content && /^[0-9a-f]{64}$/.test(r.content));
+  if (hashed.length === 0) return GENESIS_SHA256;
+  const named = new Set(hashed.map((r) => r.prev));
+  const tips = hashed.filter((r) => !named.has(r.content));
+  // More than one tip means the chain already forked (verifyLedger reports it); extend
+  // the latest-named branch. No tip at all is a cycle — fall back to the last file.
+  return (tips[tips.length - 1] ?? hashed[hashed.length - 1]).content as string;
 }
 
 /** Writes one hash-chained convening to the ledger; returns the absolute path written. */
@@ -189,71 +212,77 @@ export function writeLedger(entry: LedgerEntry, dir: string = ledgerDir()): stri
 }
 
 /**
- * Verifies the SHA-256 hash chain (`prev_sha256` -> `content_sha256`) across all
- * `.md` ledger files in `dir` in chronological filename order. Pre-v0.9 entries
- * predating the first chained record are skipped cleanly; missing or altered hashes
- * once chaining begins are reported as errors.
+ * Verifies the SHA-256 hash chain across all `.md` ledger files in `dir`. Each entry's
+ * `content_sha256` is recomputed, and the entries must form one unbroken line of
+ * `prev_sha256` links from genesis — followed by link, not by filename order (see
+ * `latestLedgerHash`). Pre-v0.9 entries that sort ahead of the first chained record are
+ * skipped cleanly; an unhashed file after it, a dangling link, or a fork is an error.
  */
 export function verifyLedger(dir: string = ledgerDir()): LedgerVerification {
   if (!existsSync(dir)) {
     return { valid: true, checked: 0, legacySkipped: 0, headSha256: GENESIS_SHA256, errors: [] };
   }
 
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .sort();
-
-  let expectedPrev = GENESIS_SHA256;
+  const records = readChainRecords(dir);
+  const errors: string[] = [];
+  const complete: Array<ChainRecord & { prev: string; content: string }> = [];
   let chainStarted = false;
   let checked = 0;
   let legacySkipped = 0;
-  const errors: string[] = [];
 
-  for (const file of files) {
-    const raw = readFileSync(join(dir, file), "utf8");
-    const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(raw)?.[1] ?? "";
-    const prevMatch = /^prev_sha256:\s*(\S+)\s*$/m.exec(fm);
-    const contentMatch = /^content_sha256:\s*(\S+)\s*$/m.exec(fm);
-
-    if (!prevMatch && !contentMatch) {
-      if (!chainStarted) {
+  for (const record of records) {
+    if (!record.prev && !record.content) {
+      if (chainStarted) {
+        errors.push(`${record.file}: missing prev_sha256/content_sha256 after hash chain started`);
+      } else {
         legacySkipped++;
-        continue;
       }
-      errors.push(`${file}: missing prev_sha256/content_sha256 after hash chain started`);
       continue;
     }
 
     chainStarted = true;
     checked++;
 
-    if (!prevMatch || !contentMatch) {
-      errors.push(`${file}: incomplete hash-chain frontmatter`);
+    if (!record.prev || !record.content) {
+      errors.push(`${record.file}: incomplete hash-chain frontmatter`);
       continue;
     }
 
-    const prevSha = prevMatch[1];
-    const contentSha = contentMatch[1];
-
-    if (prevSha !== expectedPrev) {
-      errors.push(`${file}: broken chain — prev_sha256 is ${prevSha}, expected ${expectedPrev}`);
-    }
-
-    const recomputed = sha256Hex(canonicalizeForHash(raw));
-    if (contentSha !== recomputed) {
+    const recomputed = sha256Hex(canonicalizeForHash(record.raw));
+    if (record.content !== recomputed) {
       errors.push(
-        `${file}: tampered content — content_sha256 is ${contentSha}, recomputed ${recomputed}`,
+        `${record.file}: tampered content — content_sha256 is ${record.content}, recomputed ${recomputed}`,
       );
     }
-
-    expectedPrev = contentSha;
+    complete.push(record as ChainRecord & { prev: string; content: string });
   }
 
-  return {
-    valid: errors.length === 0,
-    checked,
-    legacySkipped,
-    headSha256: expectedPrev,
-    errors,
-  };
+  // Walk the links from genesis. Every complete entry must be reached exactly once.
+  const successors = new Map<string, typeof complete>();
+  for (const record of complete) {
+    const list = successors.get(record.prev) ?? [];
+    list.push(record);
+    successors.set(record.prev, list);
+  }
+  const reached = new Set<string>();
+  let headSha256 = GENESIS_SHA256;
+  for (let next = successors.get(headSha256); next && !reached.has(next[0].file); next = successors.get(headSha256)) {
+    if (next.length > 1) {
+      errors.push(
+        `forked chain — ${next.map((r) => r.file).join(" and ")} all name ${headSha256} as prev_sha256`,
+      );
+      for (const sibling of next) reached.add(sibling.file);
+    }
+    reached.add(next[0].file);
+    headSha256 = next[0].content;
+  }
+  for (const record of complete) {
+    if (!reached.has(record.file)) {
+      errors.push(
+        `${record.file}: broken chain — prev_sha256 is ${record.prev}, which does not lead back to genesis`,
+      );
+    }
+  }
+
+  return { valid: errors.length === 0, checked, legacySkipped, headSha256, errors };
 }

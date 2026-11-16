@@ -1,5 +1,14 @@
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderLedger, type LedgerEntry } from "../src/ledger.js";
+import {
+  GENESIS_SHA256,
+  renderLedger,
+  verifyLedger,
+  writeLedger,
+  type LedgerEntry,
+} from "../src/ledger.js";
 
 const ENTRY: LedgerEntry = {
   date: new Date("2026-08-15T12:00:00.000Z"),
@@ -37,7 +46,7 @@ const ENTRY: LedgerEntry = {
   relations: [],
 };
 
-describe("renderLedger (schema v3)", () => {
+describe("renderLedger (schema v3 + hash chain)", () => {
   const md = renderLedger(ENTRY);
 
   it("declares schema v3", () => {
@@ -55,5 +64,90 @@ describe("renderLedger (schema v3)", () => {
 
   it("carries the retained: prefix through the frontmatter models list", () => {
     expect(md).toContain("models: [anthro-med, retained: claude-code, synth: anthro-high]");
+  });
+
+  it("embeds prev_sha256 and content_sha256 in frontmatter", () => {
+    expect(md).toContain(`prev_sha256: ${GENESIS_SHA256}`);
+    expect(md).toMatch(/^content_sha256: [0-9a-f]{64}$/m);
+  });
+});
+
+describe("writeLedger + verifyLedger hash chain", () => {
+  it("chains consecutive entries and verifies cleanly", () => {
+    const dir = mkdtempSync(join(tmpdir(), "symposium-ledger-chain-"));
+    try {
+      const p1 = writeLedger({ ...ENTRY, date: new Date("2026-11-15T10:00:00.000Z"), question: "First?" }, dir);
+      const p2 = writeLedger({ ...ENTRY, date: new Date("2026-11-15T10:05:00.000Z"), question: "Second?" }, dir);
+      const p3 = writeLedger({ ...ENTRY, date: new Date("2026-11-15T10:10:00.000Z"), question: "Third?" }, dir);
+
+      const h1 = /^content_sha256: ([0-9a-f]{64})$/m.exec(readFileSync(p1, "utf8"))![1];
+      const h2Prev = /^prev_sha256: ([0-9a-f]{64})$/m.exec(readFileSync(p2, "utf8"))![1];
+      const h3 = /^content_sha256: ([0-9a-f]{64})$/m.exec(readFileSync(p3, "utf8"))![1];
+      expect(h2Prev).toBe(h1);
+
+      const check = verifyLedger(dir);
+      expect(check).toEqual({
+        valid: true,
+        checked: 3,
+        legacySkipped: 0,
+        headSha256: h3,
+        errors: [],
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects body/frontmatter tampering and deleted middle entries", () => {
+    const dir = mkdtempSync(join(tmpdir(), "symposium-ledger-tamper-"));
+    try {
+      writeLedger({ ...ENTRY, date: new Date("2026-11-15T11:00:00.000Z"), question: "One" }, dir);
+      const p2 = writeLedger({ ...ENTRY, date: new Date("2026-11-15T11:05:00.000Z"), question: "Two" }, dir);
+      const p3 = writeLedger({ ...ENTRY, date: new Date("2026-11-15T11:10:00.000Z"), question: "Three" }, dir);
+
+      const originalP2 = readFileSync(p2, "utf8");
+      writeFileSync(p2, originalP2.replace("Synthesis\nS", "Synthesis\nTampered!"), "utf8");
+      const tampered = verifyLedger(dir);
+      expect(tampered.valid).toBe(false);
+      expect(tampered.errors[0]).toContain("tampered content");
+
+      // Restore p2, then delete p2 so p3's prev_sha256 dangles.
+      writeFileSync(p2, originalP2, "utf8");
+      expect(verifyLedger(dir).valid).toBe(true);
+      unlinkSync(p2);
+      const broken = verifyLedger(dir);
+      expect(broken.valid).toBe(false);
+      expect(broken.errors[0]).toContain("broken chain");
+      expect(p3).toBeTruthy();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips pre-v0.9 unhashed files before the chain, but rejects unhashed files after", () => {
+    const dir = mkdtempSync(join(tmpdir(), "symposium-ledger-legacy-"));
+    try {
+      writeFileSync(
+        join(dir, "2026-08-10-1200-legacy.md"),
+        "---\nschema: symposium-ledger/v3\n---\n# Legacy\n",
+        "utf8",
+      );
+      writeLedger({ ...ENTRY, date: new Date("2026-11-15T12:00:00.000Z"), question: "Chained" }, dir);
+      const ok = verifyLedger(dir);
+      expect(ok.valid).toBe(true);
+      expect(ok.legacySkipped).toBe(1);
+      expect(ok.checked).toBe(1);
+
+      writeFileSync(
+        join(dir, "2026-11-15-2359-stripped.md"),
+        "---\nschema: symposium-ledger/v3\n---\n# Stripped\n",
+        "utf8",
+      );
+      const bad = verifyLedger(dir);
+      expect(bad.valid).toBe(false);
+      expect(bad.errors[0]).toContain("missing prev_sha256/content_sha256 after hash chain started");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

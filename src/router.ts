@@ -8,7 +8,7 @@ export type Tier = "low" | "medium" | "high";
 /** API-key providers with $/Mtok pricing in the catalog. */
 export type MeteredProvider = "anthropic" | "openai" | "google" | "xai" | "deepseek" | "openrouter";
 /** Subscription-CLI providers — no API billing, flat $0 in the router (spec: retained seats). */
-export type RetainedProvider = "claude-cli" | "codex-cli" | "gemini-cli";
+export type RetainedProvider = "claude-cli" | "codex-cli" | "agy-cli";
 export type Provider = MeteredProvider | RetainedProvider;
 export type AdvisorName =
   | "Claude"
@@ -19,7 +19,7 @@ export type AdvisorName =
   | "Qwen"
   | "Claude Code"
   | "Codex"
-  | "Gemini CLI";
+  | "Antigravity";
 /**
  * Seat provenance (ledger schema v3): `retained` = an official subscription CLI carrying
  * its human's context — informed-but-interested counsel; `neutral` = a cold API seat.
@@ -83,7 +83,12 @@ export const ADVISORS: ReadonlyArray<{ name: AdvisorName; provider: MeteredProvi
 ];
 
 /** Opt-in tokens for SYMPOSIUM_RETAINED_SEATS (comma/space separated). */
-export type RetainedToken = "claude" | "codex" | "gemini";
+export type RetainedToken = "claude" | "codex" | "agy";
+
+/** Legacy token aliases accepted silently so pre-v0.9 configs keep working. */
+const RETAINED_TOKEN_ALIASES: Readonly<Record<string, RetainedToken>> = {
+  gemini: "agy",
+};
 
 export interface RetainedSeatSpec {
   token: RetainedToken;
@@ -98,7 +103,7 @@ export interface RetainedSeatSpec {
 export const RETAINED_SEATS: ReadonlyArray<RetainedSeatSpec> = [
   { token: "claude", name: "Claude Code", provider: "claude-cli", command: "claude", cliId: "claude-code" },
   { token: "codex", name: "Codex", provider: "codex-cli", command: "codex", cliId: "codex" },
-  { token: "gemini", name: "Gemini CLI", provider: "gemini-cli", command: "gemini", cliId: "gemini-cli" },
+  { token: "agy", name: "Antigravity", provider: "agy-cli", command: "agy", cliId: "agy" },
 ];
 
 /** Flat pricing for a retained seat: no API billing. NOT "zero cost" — quotas and ToS are real. */
@@ -117,8 +122,9 @@ export function parseRetainedTokens(raw: string | undefined): {
   const tokens: RetainedToken[] = [];
   const unknown: string[] = [];
   for (const part of raw.split(/[,\s]+/).map((p) => p.trim().toLowerCase()).filter(Boolean)) {
-    if (known.has(part)) {
-      if (!tokens.includes(part as RetainedToken)) tokens.push(part as RetainedToken);
+    const resolved = RETAINED_TOKEN_ALIASES[part] ?? part;
+    if (known.has(resolved)) {
+      if (!tokens.includes(resolved as RetainedToken)) tokens.push(resolved as RetainedToken);
     } else {
       unknown.push(part);
     }
@@ -367,7 +373,7 @@ export function planCouncil(
     };
   });
   const notices = unknown.map(
-    (u) => `unknown retained seat token "${u}" ignored (known: claude, codex, gemini)`,
+    (u) => `unknown retained seat token "${u}" ignored (known: claude, codex, agy)`,
   );
 
   const advisors = [...neutralAdvisors, ...retainedAdvisors];
@@ -400,7 +406,7 @@ export function planCouncil(
     refusal =
       `only ${availableSeats} advisor(s) available; the council requires at least 2. ` +
       `Missing keys: ${missing.join(", ")}. ` +
-      `Retained seats can also be opted in via SYMPOSIUM_RETAINED_SEATS (claude, codex, gemini)`;
+      `Retained seats can also be opted in via SYMPOSIUM_RETAINED_SEATS (claude, codex, agy)`;
   }
 
   return {

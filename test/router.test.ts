@@ -278,18 +278,27 @@ describe("retained seats (SYMPOSIUM_RETAINED_SEATS)", () => {
     expect(p.advisors.filter((a) => a.provenance === "neutral")).toHaveLength(6);
   });
 
-  it("marks an opted-in seat skipped when its CLI is not on PATH", () => {
+  it("marks an opted-in seat skipped when its CLI is not on PATH (and aliases legacy gemini -> agy)", () => {
     const p = planCouncil(
+      { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
+      { ...ALL_KEYS, SYMPOSIUM_RETAINED_SEATS: "agy" },
+      FIXTURE,
+      {}, // agy never detected
+    );
+    const seat = p.advisors.find((a) => a.name === "Antigravity")!;
+    expect(seat.available).toBe(false);
+    expect(seat.modelId).toBeNull();
+    expect(seat.notice).toContain("agy CLI not found on PATH");
+    expect(p.refusal).toBeUndefined(); // four keyed advisors still hold quorum
+
+    const legacy = planCouncil(
       { question: QUESTION, stakes: "medium", budget_usd: BIG_BUDGET },
       { ...ALL_KEYS, SYMPOSIUM_RETAINED_SEATS: "gemini" },
       FIXTURE,
-      {}, // gemini never detected
+      { agy: true },
     );
-    const seat = p.advisors.find((a) => a.name === "Gemini CLI")!;
-    expect(seat.available).toBe(false);
-    expect(seat.modelId).toBeNull();
-    expect(seat.notice).toContain("gemini CLI not found on PATH");
-    expect(p.refusal).toBeUndefined(); // four keyed advisors still hold quorum
+    expect(legacy.notices).toEqual([]);
+    expect(legacy.advisors.find((a) => a.name === "Antigravity")?.modelId).toBe("agy");
   });
 
   it("counts retained seats toward the >= 2 quorum", () => {

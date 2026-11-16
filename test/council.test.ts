@@ -11,6 +11,7 @@ import {
   type CostCap,
 } from "../src/council.js";
 import type { ProviderAdapter } from "../src/providers/types.js";
+import { ADVISOR_JSON_SCHEMA } from "../src/providers/google.js";
 import { planCouncil, type Catalog, type Provider } from "../src/router.js";
 
 const FIXTURE: Catalog = {
@@ -86,7 +87,7 @@ const model = (id: string) => {
 const idleClis = () => ({
   "claude-cli": fakeAdapter("claude-cli", []),
   "codex-cli": fakeAdapter("codex-cli", []),
-  "gemini-cli": fakeAdapter("gemini-cli", []),
+  "agy-cli": fakeAdapter("agy-cli", []),
 });
 
 describe("parsing", () => {
@@ -180,17 +181,43 @@ describe("runAdvisor", () => {
 });
 
 describe("redactSecrets", () => {
-  it("scrubs provider key shapes", () => {
+  it("scrubs provider key shapes, GitHub PATs, AWS keys, and Bearer tokens", () => {
     expect(redactSecrets("key sk-proj-abc123XYZ_456 rejected")).not.toContain("abc123XYZ");
     expect(redactSecrets("bad AIzaSyFAKEKEYMATERIAL here")).not.toContain("FAKEKEYMATERIAL");
     expect(redactSecrets("token xai-FAKEFAKEFAKE1234 bad")).not.toContain("FAKEFAKEFAKE1234");
+    expect(redactSecrets("pat ghp_1234567890abcdefABCDEF1234567890abcd leaked")).toBe(
+      "pat [redacted-key] leaked",
+    );
+    expect(redactSecrets("pat github_pat_11ABCDEFG0123456789_secretXYZ leaked")).toBe(
+      "pat [redacted-key] leaked",
+    );
+    expect(redactSecrets("aws AKIAIOSFODNN7EXAMPLE denied")).toBe("aws [redacted-key] denied");
+    expect(redactSecrets("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sig")).toBe(
+      "Authorization: Bearer [redacted-key]",
+    );
     expect(redactSecrets("no secrets here")).toBe("no secrets here");
   });
 
-  it("leaves hyphenated prose alone (found in a real advisor position)", () => {
+  it("leaves hyphenated and financial prose alone (found in real advisor positions)", () => {
     expect(redactSecrets("a risk-tolerant, risk-specific plan")).toBe(
       "a risk-tolerant, risk-specific plan",
     );
+    expect(redactSecrets("a bearer instrument or bearer self-interest")).toBe(
+      "a bearer instrument or bearer self-interest",
+    );
+  });
+});
+
+describe("google advisor JSON schema", () => {
+  it("matches every required key of advisorReplySchema", () => {
+    expect(ADVISOR_JSON_SCHEMA.required).toEqual([
+      "position",
+      "confidence",
+      "key_uncertainties",
+      "strongest_objection_to_own_position",
+      "dissent_from_framing",
+    ]);
+    expect(ADVISOR_JSON_SCHEMA.additionalProperties).toBe(false);
   });
 });
 

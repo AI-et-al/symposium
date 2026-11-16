@@ -76,14 +76,14 @@ Opt in explicitly — a subscription CLI is never invoked unasked:
 
 ```sh
 claude mcp add symposium \
-  -e SYMPOSIUM_RETAINED_SEATS=claude,codex,gemini \
+  -e SYMPOSIUM_RETAINED_SEATS=claude,codex,agy \
   ... \
   -- npx tsx src/server.ts
 ```
 
-That seats **Claude Code** (`claude -p`), **Codex** (`codex exec`), and **Gemini CLI**
-(`gemini`) as subprocesses in answer-only mode: read-only/no-tools flags, no MCP
-servers, no session files, run from your home directory so they carry your user-level
+That seats **Claude Code** (`claude -p`), **Codex** (`codex exec`), and **Antigravity**
+(`agy`) as subprocesses in answer-only mode: read-only/plan/sandbox flags, no MCP
+servers or isolated ephemeral workspaces, no session files, carrying your user-level
 context and nothing else. A seat whose CLI is not on PATH is simply skipped with a
 notice, like a missing API key.
 
@@ -172,9 +172,11 @@ the council; a retained-only council ruled format-first, and the ledgers are the
 
 ## Honesty notes
 
-- **`audited` mode is a schema seat, not an assurance.** The council itself ruled on
-  this (see `ledger/`): a plain-Markdown file with a frontmatter tag has no tamper
-  evidence, no signing, no hash chain. Do not present it as a compliance audit trail.
+- **`audited` mode adds tamper-evident SHA-256 hash chaining, not external signing.** Each
+  v0.9+ ledger entry records `prev_sha256` and `content_sha256` (`verifyLedger()` checks
+  the chain), which detects accidental or post-hoc edits inside a directory — but anyone
+  with write access to the directory could rewrite the chain from genesis. Still not a
+  third-party compliance audit trail without external anchoring or signatures.
 - **Model prices drift.** `src/models.json` records the verification date; estimates are
   deliberately conservative (max-token assumptions) and actuals typically land at a
   third of the estimate.
@@ -183,9 +185,8 @@ the council; a retained-only council ruled format-first, and the ledgers are the
   not speak and why.
 - **Retained seats are not free, and answer-only is best-effort.** "No API billing"
   is not "zero cost" (quota, ToS, opportunity cost — the council itself corrected this
-  framing). The no-tools containment uses each CLI's own flags, verified against the
-  versions recorded in `DECISIONS.md`; the Gemini CLI adapter is docs-derived and
-  unverified until a live install exists.
+  framing). The no-tools containment uses each CLI's own flags (`claude`, `codex`, `agy`),
+  verified against the versions recorded in `DECISIONS.md`.
 
 ## Non-goals (v1)
 

@@ -20,16 +20,16 @@ describe("chipAttributions", () => {
   });
 
   it("never chips a seat name inside a quoted body", () => {
-    const body = '> **GPT —** "Claude Code and Gemini CLI both overstate their context"';
+    const body = '> **GPT —** "Claude Code and Antigravity both overstate their context"';
     expect(chipAttributions(body)).toBe(
-      '> **🟢 GPT —** "Claude Code and Gemini CLI both overstate their context"',
+      '> **🟢 GPT —** "Claude Code and Antigravity both overstate their context"',
     );
   });
 
   it("has a chip and fill for every seat, retained seats sharing the provider hue", () => {
     expect(SEAT["Claude Code"].fill).toBe(SEAT.Claude.fill);
     expect(SEAT.Codex.fill).toBe(SEAT.GPT.fill);
-    expect(SEAT["Gemini CLI"].fill).toBe(SEAT.Gemini.fill);
+    expect(SEAT.Antigravity.fill).toBe(SEAT.Gemini.fill);
     expect(SEAT["Claude Code"].chip).not.toBe(SEAT.Claude.chip);
   });
 });

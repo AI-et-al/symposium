@@ -20,7 +20,7 @@ wrong.
 | Qwen | 🟡 | 🟨 | Qwen yellow (red is reserved for a breached budget) |
 | Claude Code | 🧡 | 🟧 | Anthropic terracotta, retained |
 | Codex | 💚 | 🟩 | OpenAI green, retained |
-| Gemini CLI | 💙 | 🟦 | Google blue, retained |
+| Antigravity | 💙 | 🟦 | Google blue, retained |
 
 **Retained seats wear hearts (v0.7).** A retained seat — the operator's own
 subscription CLI, carrying their context — keeps its provider's hue but swaps the
@@ -29,7 +29,7 @@ circle for a heart: a seat that belongs to someone. Identity (hue) and provenanc
 shared with the provider's neutral seat, which is safe for the same reason the
 bars were already safe: no bar appears without its numeral, and no bar shares a
 line with another seat's content. Chip substitution matches longest-name-first
-("Claude Code" before "Claude", "Gemini CLI" before "Gemini") so a retained
+("Claude Code" before "Claude") so a retained
 seat's attribution line can never be half-chipped with its neutral sibling's
 color — the implementation sorts `SEAT` keys by length and the test suite pins
 it (`test/theme.test.ts`).

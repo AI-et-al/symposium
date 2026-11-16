@@ -54,25 +54,37 @@ export function codexAnswerOnlyArgs(lastMessageFile: string): string[] {
 }
 
 /**
- * Gemini CLI runs one-shot on piped stdin with no flags. Docs-derived, NOT verified
- * against a live install (none present at build time); the seat skips when the
- * binary is absent and any flag drift surfaces as a recorded error outcome.
+ * Answer-only mode for Google Antigravity (`agy`, verified live against agy 1.5.9 on macOS):
+ * piped stdin triggers non-interactive print mode automatically (`-p` in agy 1.5.9 takes an
+ * inline prompt argument and must not be passed bare when reading stdin), `--mode plan` +
+ * `--sandbox` enforce read-only planning with terminal sandboxing, `--output-format text`
+ * emits clean stdout, and `--effort low` bounds latency and subscription quota. Note:
+ * `--disable-slash-commands` is omitted because agy warns `--mode plan` is inert with it set.
  */
-export const GEMINI_ANSWER_ONLY_ARGS: ReadonlyArray<string> = [];
+export const AGY_ANSWER_ONLY_ARGS: ReadonlyArray<string> = [
+  "--output-format",
+  "text",
+  "--mode",
+  "plan",
+  "--sandbox",
+  "--effort",
+  "low",
+];
 
 /**
  * Run one CLI to completion: prompt on stdin, stdout collected, child killed on
- * timeout so no subprocess outlives its convening. cwd is the home directory —
- * retained context is the human's user-level config, not the server's cwd.
+ * timeout so no subprocess outlives its convening. Defaults cwd to the home directory
+ * (or an explicit ephemeral directory when workspace isolation requires it).
  */
 export function runCli(
   command: string,
   args: ReadonlyArray<string>,
   prompt: string,
   timeoutMs: number = RETAINED_TIMEOUT_MS,
+  cwd: string = homedir(),
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd: homedir(), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, [...args], { cwd, stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
@@ -126,10 +138,15 @@ export const codexCliAdapter: ProviderAdapter = {
   },
 };
 
-export const geminiCliAdapter: ProviderAdapter = {
-  provider: "gemini-cli",
+export const agyCliAdapter: ProviderAdapter = {
+  provider: "agy-cli",
   async complete(_modelId, prompt, _maxOutputTokens, _options) {
-    const text = await runCli("gemini", GEMINI_ANSWER_ONLY_ARGS, prompt);
-    return { text: text.trim(), usage: ZERO_USAGE };
+    const dir = mkdtempSync(join(tmpdir(), "symposium-agy-"));
+    try {
+      const text = await runCli("agy", AGY_ANSWER_ONLY_ARGS, prompt, RETAINED_TIMEOUT_MS, dir);
+      return { text: text.trim(), usage: ZERO_USAGE };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   },
 };

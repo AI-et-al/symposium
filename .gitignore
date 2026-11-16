@@ -3,5 +3,6 @@ ledger/
 dist/
 essays/
 *.log
+repomix-output.*
 .env
 .DS_Store

@@ -495,3 +495,34 @@ DeepSeek account is funded: the planner still selects DeepSeek as synthesizer
   decoration" — and a ten-cell confident Qwen bar was visually identical to the
   breach meter). OpenRouter model ids keep their `qwen/` slug prefix in the catalog
   and ledgers: the id names what is billed, and OpenRouter is what bills.
+
+## 2026-11-15 — v0.9.0: hardening pass + retained Google seat upgraded to Antigravity (`agy`)
+
+Pre-dogfooding hardening across four surfaces, plus live verification of Google's
+replacement CLI:
+
+- **Gemini JSON advisor thinking cap + schema** (`src/providers/google.ts`) — advisor
+  calls (`options.json === true`) now pass `responseJsonSchema: ADVISOR_JSON_SCHEMA`
+  alongside `thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }`, resolving the P4
+  gate truncation where unconstrained reasoning exhausted `maxOutputTokens` mid-JSON;
+  synthesis calls keep unconstrained markdown reasoning.
+- **SHA-256 ledger hash chain** (`src/ledger.ts`) — `renderLedger` and `writeLedger`
+  embed `prev_sha256` (genesis `0{64}`) and `content_sha256` in `symposium-ledger/v3`
+  frontmatter, committing to all frontmatter fields and body sections; `verifyLedger()`
+  validates chronological chains while tolerating pre-v0.9 legacy files ahead of the
+  first chained record.
+- **Expanded secret redaction** (`src/council.ts`) — `redactSecrets()` now scrubs
+  `ghp_*`, `github_pat_*`, `AKIA*`, `sk_*`, and `Bearer` tokens while preserving
+  prose such as `"risk-tolerant"` and `"bearer instrument"`.
+- **Retained seat upgraded from `gemini` to `agy`** (`src/router.ts`,
+  `src/providers/retained.ts`, `src/theme.ts`) — verified live against `agy 1.5.9` on
+  macOS: piped `stdin` triggers non-interactive print mode automatically (`-p` in
+  `agy 1.5.9` requires an inline prompt string and must not be passed bare),
+  `--mode plan --sandbox --output-format text --effort low` enforces sandboxed
+  read-only planning (`--disable-slash-commands` is omitted because it disables
+  `--mode plan`), and `agyCliAdapter` executes inside an ephemeral `mkdtempSync`
+  directory so host workspaces stay isolated while user-level `~/.gemini/GEMINI.md`
+  context still loads. Legacy `gemini` token in `SYMPOSIUM_RETAINED_SEATS` aliases
+  cleanly to `agy` (`Antigravity`).
+- **Dogfood hygiene** — removed premature `docs/announce-kit.md` and ignored
+  `repomix-output.*` in `.gitignore`.

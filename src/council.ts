@@ -19,9 +19,9 @@ import { googleAdapter } from "./providers/google.js";
 import { openaiAdapter } from "./providers/openai.js";
 import { openrouterAdapter } from "./providers/openrouter.js";
 import {
+  agyCliAdapter,
   claudeCliAdapter,
   codexCliAdapter,
-  geminiCliAdapter,
   RETAINED_TIMEOUT_MS,
 } from "./providers/retained.js";
 import { xaiAdapter } from "./providers/xai.js";
@@ -84,7 +84,7 @@ export const DEFAULT_ADAPTERS: Record<Provider, ProviderAdapter> = {
   openrouter: openrouterAdapter,
   "claude-cli": claudeCliAdapter,
   "codex-cli": codexCliAdapter,
-  "gemini-cli": geminiCliAdapter,
+  "agy-cli": agyCliAdapter,
 };
 
 /** Per-advisor call ceiling (spec §5 P4: 60s/advisor); applies to first call and retry separately. */
@@ -119,11 +119,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * Nothing key-shaped may reach the ledger or the tool response (spec §4).
  */
 export function redactSecrets(text: string): string {
-  // Word boundaries + length floors keep prose like "risk-tolerant" intact.
+  // Word boundaries + length/character-class floors keep prose like "risk-tolerant"
+  // or "bearer instrument" intact while scrubbing API keys, PATs, AWS keys, and tokens.
   return text
     .replace(/\bsk-[A-Za-z0-9_*-]{10,}/g, "[redacted-key]")
+    .replace(/\bsk_[A-Za-z0-9_-]{16,}/g, "[redacted-key]")
     .replace(/\bAIza[A-Za-z0-9_-]{10,}/g, "[redacted-key]")
-    .replace(/\bxai-[A-Za-z0-9_-]{12,}/g, "[redacted-key]");
+    .replace(/\bxai-[A-Za-z0-9_-]{12,}/g, "[redacted-key]")
+    .replace(/\bghp_[A-Za-z0-9]{16,}/g, "[redacted-key]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{16,}/g, "[redacted-key]")
+    .replace(/\bAKIA[0-9A-Z]{12,}/g, "[redacted-key]")
+    .replace(
+      /\bBearer\s+(?![a-z]+(?:-[a-z]+)?\b)(?=[A-Za-z0-9._~+/=-]*[0-9._~+/=-]|[A-Za-z0-9._~+/=-]{16,})[A-Za-z0-9._~+/=-]{10,}/gi,
+      "Bearer [redacted-key]",
+    );
 }
 
 export function costOf(model: Priced, usage: CompletionUsage): number {

@@ -20,7 +20,7 @@ export const SEAT: Record<AdvisorName, { chip: string; fill: string }> = {
   Qwen: { chip: "🟡", fill: "🟨" },
   "Claude Code": { chip: "🧡", fill: "🟧" },
   Codex: { chip: "💚", fill: "🟩" },
-  "Gemini CLI": { chip: "💙", fill: "🟦" },
+  Antigravity: { chip: "💙", fill: "🟦" },
 };
 
 export const chip = (name: AdvisorName) => (MONO ? "●" : SEAT[name].chip);
@@ -45,8 +45,8 @@ export function budgetMeter(spentUsd: number, capUsd: number, breached: boolean)
   return fill.repeat(filled) + empty.repeat(10 - filled) + ` ${Math.round((spentUsd / capUsd) * 100)}% of $${capUsd.toFixed(4)} cap`;
 }
 
-// Longest name first so "Claude Code" never half-matches as "Claude" (same for
-// "Gemini CLI"/"Gemini") — one seat's chip must never land on another seat's line.
+// Longest name first so "Claude Code" never half-matches as "Claude" — one seat's
+// chip must never land on another seat's line.
 const NAME_ALTERNATION = (Object.keys(SEAT) as AdvisorName[])
   .sort((a, b) => b.length - a.length)
   .join("|");

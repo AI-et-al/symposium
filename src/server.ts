@@ -46,7 +46,7 @@ for (const token of retainedTokens) {
 }
 if (unknownRetainedTokens.length > 0) {
   console.error(
-    `symposium: ignoring unknown retained seat token(s): ${unknownRetainedTokens.join(", ")} (known: claude, codex, gemini)`,
+    `symposium: ignoring unknown retained seat token(s): ${unknownRetainedTokens.join(", ")} (known: claude, codex, agy)`,
   );
 }
 
@@ -242,7 +242,7 @@ function renderCouncil(
   return lines.join("\n");
 }
 
-const server = new McpServer({ name: "symposium", version: "0.8.0" });
+const server = new McpServer({ name: "symposium", version: "0.9.0" });
 
 server.registerTool(
   "convene_council",
